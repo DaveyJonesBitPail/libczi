@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include "executeCreateCzi.h"
 #include "IBitmapGen.h"
 #include "inc_libCZI.h"
@@ -182,7 +181,7 @@ private:
 /*static*/wstring CExecuteCreateCzi::GetCreateCziInformalTaskDescription(const CCmdLineOptions& options, const wchar_t* linebreak)
 {
     wstringstream ss;
-    ss << L"Bounds:    " << convertUtf8ToUCS2(Utils::DimBoundsToString(&options.GetCreateBounds())) << linebreak;
+    ss << L"Bounds:    " << convertUtf8ToWide(Utils::DimBoundsToString(&options.GetCreateBounds())) << linebreak;
     const auto& tileSize = options.GetCreateBitmapSize();
     ss << L"Tile-size: " << get<0>(tileSize) << L" x " << get<1>(tileSize) << linebreak;
     const auto tileInfo = options.GetCreateTileInfo();
@@ -211,7 +210,7 @@ private:
     //        (3) ...both things are not really necessary from a technical point of view, however... consistency-
     //             checking I'd consider an important feature
 
-    auto spWriterInfo = make_shared<CCziWriterInfo>(options.GetIsFileGuidValid() ? options.GetFileGuid() : GUID{ 0,0,0,{ 0,0,0,0,0,0,0,0 } });
+    auto spWriterInfo = make_shared<CCziWriterInfo>(options.GetIsFileGuidValid() ? options.GetFileGuid() : libCZI::GUID{ 0,0,0,{ 0,0,0,0,0,0,0,0 } });
     //spWriterInfo->SetReservedSizeForMetadataSegment(true, 10 * 1024);
     //spWriterInfo->SetReservedSizeForSubBlockDirectory(true, 400);
     writer->Create(outStream, spWriterInfo);

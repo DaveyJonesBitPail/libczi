@@ -10,9 +10,9 @@
 
 namespace libCZI
 {
-    /// This is an utility in order to prepare the information
+    /// This is a utility in order to prepare the information
     /// required for the multi-channel-composition functions from
-    /// the display-settings (e. g. retrieved from metadata).
+    /// the display-settings (e.g.  retrieved from metadata).
     /// If the gradation curve is given as gamma or as a spline,
     /// we calculate here the lookup-table. In addition, we 
     /// make sure that only channels which are "enabled" (in the
@@ -30,7 +30,7 @@ namespace libCZI
         ///
         /// \param ptrDspSetting	  The display settings.
         /// \param funcEnabledChannel A functor which will be called for each active channel.
-        static void EnumEnabledChannels(const libCZI::IDisplaySettings* ptrDspSetting, std::function<bool(int)> funcEnabledChannel)
+        static void EnumEnabledChannels(const libCZI::IDisplaySettings* ptrDspSetting, const std::function<bool(int)>& funcEnabledChannel)
         {
             ptrDspSetting->EnumChannels(
                 [&](int chIndex)->bool
@@ -64,7 +64,7 @@ namespace libCZI
         ///
         /// \param ptrDspSetting A pointer to a display-settings object.
         /// \param getPixelTypeForChannelIndex A functor which is called in order to retrieve the pixeltype of the bitmap passed in for the channel with the specified channel index.
-        void Initialize(const libCZI::IDisplaySettings* ptrDspSetting, std::function<libCZI::PixelType(int chIndex)> getPixelTypeForChannelIndex)
+        void Initialize(const libCZI::IDisplaySettings* ptrDspSetting, const std::function<libCZI::PixelType(int chIndex)>& getPixelTypeForChannelIndex)
         {
             this->Clear();
             ptrDspSetting->EnumChannels(
@@ -82,8 +82,9 @@ namespace libCZI
         /// for all 'enabled' channels.
         ///
         /// \param getChDisplaySettingAndChannelIdx A functor which is used to retrieve a ChannelDisplaySetting-objects and its respective channels-index.
-        /// 										If the functor returns false, the enumeration is cancelled (and the functor is not called any more).
-        void Initialize(std::function<bool(int&, std::shared_ptr<libCZI::IChannelDisplaySetting>&)> getChDisplaySettingAndChannelIdx, std::function<libCZI::PixelType(int chIndex)> getPixelTypeForChannelIndex)
+        /// 										If the functor returns false, the enumeration is cancelled (and the functor is not called anymore). 
+        /// \param getPixelTypeForChannelIndex A functor which is called in order to retrieve the pixeltype of the bitmap passed in for the channel with the specified channel index.
+        void Initialize(const std::function<bool(int&, std::shared_ptr<libCZI::IChannelDisplaySetting>&)>& getChDisplaySettingAndChannelIdx, const std::function<libCZI::PixelType(int chIndex)>& getPixelTypeForChannelIndex)
         {
             this->Clear();
             for (;;)
@@ -129,9 +130,9 @@ namespace libCZI
         /// Also the behavior is undefined if this class has not been successfully initialized.
         ///
         /// \return A pointer to the channel-infos array (containing as many elements as determined by GetActiveChannelsCount).
-        const libCZI::Compositors::ChannelInfo* GetChannelInfosArray()
+        const libCZI::Compositors::ChannelInfo* GetChannelInfosArray() const
         {
-            return &this->channelInfos[0];
+            return this->channelInfos.data();
         }
     private:
         void Clear()
@@ -141,7 +142,7 @@ namespace libCZI
             this->lutStore.clear();
         }
 
-        void AddChannelSetting(int chIdx, const libCZI::IChannelDisplaySetting* chDsplSetting, std::function<libCZI::PixelType(int chIndex)> getPixelTypeForChannelIndex)
+        void AddChannelSetting(int chIdx, const libCZI::IChannelDisplaySetting* chDsplSetting, const std::function<libCZI::PixelType(int chIndex)>& getPixelTypeForChannelIndex)
         {
             // Note that we only add this channel IF IT IS ENABLED. If not, we DO NOT and MUST NOT call the 
             // "getPixelTypeForChannelIndex"-callback!
@@ -167,7 +168,7 @@ namespace libCZI
                 chDsplSetting->TryGetGamma(&gamma);
                 this->lutStore.emplace_back(
                     libCZI::Utils::Create8BitLookUpTableFromGamma(lutSize, ci.blackPoint, ci.whitePoint, gamma));
-                ci.ptrLookUpTable = &(this->lutStore.back()[0]);
+                ci.ptrLookUpTable = this->lutStore.back().data();
                 ci.lookUpTableElementCount = lutSize;
             }
             break;
@@ -178,7 +179,7 @@ namespace libCZI
                 chDsplSetting->TryGetSplineData(&splineData);
                 this->lutStore.emplace_back(
                     libCZI::Utils::Create8BitLookUpTableFromSplines(lutSize, ci.blackPoint, ci.whitePoint, splineData));
-                ci.ptrLookUpTable = &(this->lutStore.back()[0]);
+                ci.ptrLookUpTable = this->lutStore.back().data();
                 ci.lookUpTableElementCount = lutSize;
             }
             break;
@@ -190,7 +191,7 @@ namespace libCZI
             this->activeChannels.push_back(chIdx);
         }
 
-        static int GetSizeForLUT(int chIdx, std::function<libCZI::PixelType(int chIndex)> getPixelTypeForChannelIndex)
+        static int GetSizeForLUT(int chIdx, const std::function<libCZI::PixelType(int chIndex)>& getPixelTypeForChannelIndex)
         {
             libCZI::PixelType  pxlType = getPixelTypeForChannelIndex(chIdx);
             switch (pxlType)
@@ -203,4 +204,28 @@ namespace libCZI
             }
         }
     };
+    
+    /// This operator allows combining multiple `SubBlockDirectoryInfoPolicy` flags into a single value
+    /// using the bitwise OR operation. It is useful for specifying multiple policies simultaneously
+    /// when configuring the behavior of the `ICZIReader::OpenOptions` class.
+    ///
+    /// \param lhs The left-hand side `SubBlockDirectoryInfoPolicy` value.
+    /// \param rhs The right-hand side `SubBlockDirectoryInfoPolicy` value.
+    /// \return A `SubBlockDirectoryInfoPolicy` value that represents the combination of the two input flags.
+    constexpr ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy operator|(ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy lhs, ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy rhs)
+    {
+        return static_cast<ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
+    }
+
+    /// This operator allows combining multiple `SubBlockDirectoryInfoPolicy` flags into a single value
+    /// using the bitwise AND operation. It is useful for checking whether specific policies are enabled
+    /// when configuring the behavior of the `ICZIReader::OpenOptions` class.
+    ///
+    /// \param lhs The left-hand side `SubBlockDirectoryInfoPolicy` value.
+    /// \param rhs The right-hand side `SubBlockDirectoryInfoPolicy` value.
+    /// \return A `SubBlockDirectoryInfoPolicy` value that represents the intersection of the two input flags.
+    constexpr ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy operator&(ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy lhs, ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy rhs)
+    {
+        return static_cast<ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy>(static_cast<std::uint8_t>(lhs) & static_cast<std::uint8_t>(rhs));
+    }
 }

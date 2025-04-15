@@ -17,12 +17,11 @@ private:
     std::uint32_t   metaDataSize;
     libCZI::SubBlockInfo    info;
 public:
-    CCziSubBlock(const libCZI::SubBlockInfo& info, const CCZIParse::SubBlockData& data, std::function<void(void*)> deleter);
-    ~CCziSubBlock() override;
+    CCziSubBlock(const libCZI::SubBlockInfo& info, const CCZIParse::SubBlockData& data, const std::function<void(void*)>& deleter);
 
     // interface ISubBlock
     const libCZI::SubBlockInfo& GetSubBlockInfo() const override;
     void DangerousGetRawData(libCZI::ISubBlock::MemBlkType type, const void*& ptr, size_t& size) const override;
     std::shared_ptr<const void> GetRawData(MemBlkType type, size_t* ptrSize) override;
-    std::shared_ptr<libCZI::IBitmapData> CreateBitmap() override;
+    std::shared_ptr<libCZI::IBitmapData> CreateBitmap(const libCZI::CreateBitmapOptions* options) override;
 };

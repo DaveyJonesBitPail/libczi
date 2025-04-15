@@ -10,6 +10,9 @@
 #define LIBCZI_VERSION_PATCH "@libCZI_VERSION_PATCH@"
 #define LIBCZI_VERSION_TWEAK "@libCZI_VERSION_TWEAK@"
 
+// whether the libCZI library is built with support for the Windows-API, i.e. whether it is being built for a Windows-environment
+#define LIBCZI_WINDOWSAPI_AVAILABLE @libCZI_WINDOWSAPIAVAILABLE@
+
 // if the host system is a big-endian system, this is "1", otherwise 0
 #define LIBCZI_ISBIGENDIANHOST @libCZI_ISBIGENDIANHOST@
 
@@ -43,3 +46,11 @@
 
 // whether ARM-Neon-intrinsics can be used
 #define LIBCZI_HAS_NEOININTRINSICS @libCZI_HAS_NEOININTRINSICS@
+
+// whether the curl-based stream implementations are available (and whether libCZI can use the libcurl library)
+#define LIBCZI_CURL_BASED_STREAM_AVAILABLE  @libCZI_libcurl_available@
+
+// whether the Azure-SDK stream implementation is available (and whether libCZI can use the Azure-Storage library)
+#define LIBCZI_AZURESDK_BASED_STREAM_AVAILABLE  @libCZI_AzureStorage_available@
+
+#define LIBCZI_AZURESDK_VERSION_INFO "@libCZI_AzureStorage_SDK_Version_Info@"

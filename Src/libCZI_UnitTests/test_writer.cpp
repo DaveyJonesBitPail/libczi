@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "pch.h"
+#include "include_gtest.h"
 #include "inc_libCZI.h"
 #include "MemOutputStream.h"
 #include "SegmentWalker.h"
@@ -419,7 +419,9 @@ static void _testWriteReadCompressedImageZStd1(uint32_t width, uint32_t height, 
     while (false);
 
     if (compressed != nullptr)
+    {
         delete[] compressed;
+    }
 }
 
 /**
@@ -724,13 +726,13 @@ TEST(CziWriter, Writer5)
     std::uint8_t data = 0;
     int cnt = 0;
     addSbBlkInfo.getData = [&](int callCnt, size_t offset, const void*& ptr, size_t& size)->bool
-    {
-        ++data;
-        ptr = &data;
-        size = 1;
-        ++cnt;
-        return true;
-    };
+        {
+            ++data;
+            ptr = &data;
+            size = 1;
+            ++cnt;
+            return true;
+        };
 
     writer->SyncAddSubBlock(addSbBlkInfo);
 
@@ -795,18 +797,18 @@ TEST(CziWriter, Writer6)
     std::uint8_t data = 0;
     int cnt = 0;
     addSbBlkInfo.getData = [&](int callCnt, size_t offset, const void*& ptr, size_t& size)->bool
-    {
-        if (callCnt > 500)
         {
-            return false;
-        }
+            if (callCnt > 500)
+            {
+                return false;
+            }
 
-        ++data;
-        ptr = &data;
-        size = 1;
-        ++cnt;
-        return true;
-    };
+            ++data;
+            ptr = &data;
+            size = 1;
+            ++cnt;
+            return true;
+        };
 
     writer->SyncAddSubBlock(addSbBlkInfo);
 
@@ -1140,8 +1142,8 @@ TEST(CziWriter, Writer11)
                 return true;
             }
 
-    success = false;
-    return false;
+            success = false;
+            return false;
         });
 
     EXPECT_TRUE(success) << "did not behave as expected";
@@ -1251,8 +1253,8 @@ TEST(CziWriter, Writer12)
                 return true;
             }
 
-    success = false;
-    return false;
+            success = false;
+            return false;
         });
 
     EXPECT_TRUE(success && allReceived) << "did not behave as expected";
@@ -1269,7 +1271,7 @@ TEST(CziWriter, Writer13)
 
     size_t sizeCompressedBitmap;
     int widthCompressedBitmap, heightCompressedBitmap;
-    auto compressedBitmap = CTestImage::GetJpgXrCompressedImage(&sizeCompressedBitmap, &widthCompressedBitmap, &heightCompressedBitmap);
+    auto compressedBitmap = CTestImage::GetJpgXrCompressedImage_Bgr24(&sizeCompressedBitmap, &widthCompressedBitmap, &heightCompressedBitmap);
 
     AddSubBlockInfoMemPtr addSbBlkInfo;
     addSbBlkInfo.Clear();
@@ -1531,7 +1533,7 @@ TEST(CziWriter, WriterReturnFalseFromCallback)
     addSbBlkInfo.physicalHeight = 10;
     addSbBlkInfo.PixelType = PixelType::Gray8;
     addSbBlkInfo.sizeData = 1000;
-    addSbBlkInfo.getData = std::function<bool(int callCnt, size_t offset, const void*& ptr, size_t& size)>(
+    addSbBlkInfo.getData = std::function<bool(int callCnt, size_t offset, const void*& ptr, size_t & size)>(
         [&](int callCnt, size_t offset, const void*& ptr, size_t& size)->bool
         {
             return false;
@@ -1599,7 +1601,7 @@ TEST(CziWriter, WriterReturnOneByteAndThenFalseFromCallback)
     addSbBlkInfo.physicalHeight = 10;
     addSbBlkInfo.PixelType = PixelType::Gray8;
     addSbBlkInfo.sizeData = 1000;
-    addSbBlkInfo.getData = std::function<bool(int callCnt, size_t offset, const void*& ptr, size_t& size)>(
+    addSbBlkInfo.getData = std::function<bool(int callCnt, size_t offset, const void*& ptr, size_t & size)>(
         [&](int callCnt, size_t offset, const void*& ptr, size_t& size)->bool
         {
             if (callCnt == 0)
@@ -1609,7 +1611,7 @@ TEST(CziWriter, WriterReturnOneByteAndThenFalseFromCallback)
                 return true;
             }
 
-    return false;
+            return false;
         }
     );
 
@@ -1832,6 +1834,60 @@ TEST(CziWriter, WriterMinimalSubblock)
     sbBlk->DangerousGetRawData(ISubBlock::MemBlkType::Data, ptr, size);
     EXPECT_EQ(size, 1 * 1);
     EXPECT_EQ(ptr[0], 255);
+}
+
+TEST(CziWriter, CheckGetStatistics)
+{
+    auto writer = CreateCZIWriter();
+    auto outStream = make_shared<CMemOutputStream>(0);
+
+    auto spWriterInfo = make_shared<CCziWriterInfo >(GUID{ 0x1234567,0x89ab,0xcdef,{ 1,2,3,4,5,6,7,8 } });
+    writer->Create(outStream, spWriterInfo);
+
+    auto bitmap = CreateTestBitmap(PixelType::Gray8, 1, 1);
+    CBitmapOperations::Fill(bitmap.get(), { 1, 1, 1 });
+
+    for (int z = 0; z < 3; ++z)
+    {
+        ScopedBitmapLockerSP lockBm{ bitmap };
+        AddSubBlockInfoStridedBitmap addSbBlkInfo;
+        addSbBlkInfo.Clear();
+        addSbBlkInfo.coordinate = CDimCoordinate{ { { libCZI::DimensionIndex::C, 0 },{ libCZI::DimensionIndex::Z, z }  } };
+        addSbBlkInfo.mIndexValid = true;
+        addSbBlkInfo.mIndex = z;
+        addSbBlkInfo.x = 0;
+        addSbBlkInfo.y = 0;
+        addSbBlkInfo.logicalWidth = bitmap->GetWidth();
+        addSbBlkInfo.logicalHeight = bitmap->GetHeight();
+        addSbBlkInfo.physicalWidth = bitmap->GetWidth();
+        addSbBlkInfo.physicalHeight = bitmap->GetHeight();
+        addSbBlkInfo.PixelType = bitmap->GetPixelType();
+
+        addSbBlkInfo.ptrBitmap = lockBm.ptrDataRoi;
+        addSbBlkInfo.strideBitmap = lockBm.stride;
+        writer->SyncAddSubBlock(addSbBlkInfo);
+    }
+
+    auto statistics = writer->GetStatistics();
+
+    writer->Close();
+    writer.reset();
+
+    EXPECT_EQ(statistics.subBlockCount, 3) << "Expected three subblocks";
+    EXPECT_EQ(statistics.minMindex, 0) << "Expected minMindex to be 0";
+    EXPECT_EQ(statistics.maxMindex, 2) << "Expected maxMindex to be 2";
+    int z_start = -1, z_size = -1;
+    EXPECT_TRUE(statistics.dimBounds.TryGetInterval(DimensionIndex::Z, &z_start, &z_size));
+    EXPECT_EQ(z_start, 0) << "Expected z_start to be 0";
+    EXPECT_EQ(z_size, 3) << "Expected z_size to be 3";
+    int c_start = -1, c_size = -1;
+    EXPECT_TRUE(statistics.dimBounds.TryGetInterval(DimensionIndex::C, &c_start, &c_size));
+    EXPECT_EQ(c_start, 0) << "Expected c_start to be 0";
+    EXPECT_EQ(c_size, 1) << "Expected c_size to be 1";
+    EXPECT_EQ(statistics.boundingBox.x, 0) << "Expected bounding-box x to be 0";
+    EXPECT_EQ(statistics.boundingBox.y, 0) << "Expected bounding-box y to be 0";
+    EXPECT_EQ(statistics.boundingBox.w, 1) << "Expected bounding-box w to be 1";
+    EXPECT_EQ(statistics.boundingBox.h, 1) << "Expected bounding-box h to be 1";
 }
 
 //! Write ZSt0 compressed Gray8 image with no parameters
@@ -2120,4 +2176,116 @@ TEST(CziWriter, WriteReadCompressedZStd1ImageBrg48LowPacking)
 {
     constexpr PixelType pixelType = PixelType::Bgr48;
     _testWriteReadCompressedImageZStd1LowPacking(61, 61, pixelType, 2, true);
+}
+
+TEST(CziWriter, TryAddingDuplicateAttachmentToCziWriterAndExpectError)
+{
+    const auto writer = CreateCZIWriter();
+    const auto output_stream = make_shared<CMemOutputStream>(0);
+
+    const auto czi_writer_info = std::make_shared<libCZI::CCziWriterInfo>(GUID{ 0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0} });
+
+    writer->Create(output_stream, czi_writer_info);
+
+    constexpr uint8_t data[] = { 1,2,3 };
+
+    AddAttachmentInfo add_attachment_info;
+    add_attachment_info.contentGuid = GUID{ 1, 2, 3, {4, 5, 6, 7, 8, 9, 10, 11} };
+    add_attachment_info.SetContentFileType("ABC");
+    add_attachment_info.SetName("Test");
+    add_attachment_info.ptrData = data;
+    add_attachment_info.dataSize = sizeof(data);
+    writer->SyncAddAttachment(add_attachment_info);
+
+    // now, try to add it a second time
+    EXPECT_THROW(writer->SyncAddAttachment(add_attachment_info), LibCZIException);
+}
+
+TEST(CziWriter, TryAddingDuplicateSubBlocksToCziWriterAndExpectError)
+{
+    // arrange
+    const auto writer = CreateCZIWriter();
+    const auto output_stream = make_shared<CMemOutputStream>(0);
+
+    const auto czi_writer_info = std::make_shared<libCZI::CCziWriterInfo>(GUID{ 0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0} });
+
+    writer->Create(output_stream, czi_writer_info);
+
+    auto bitmap = CreateTestBitmap(PixelType::Gray8, 64, 64);
+
+    // now we try to add the same subblock twice
+    ScopedBitmapLockerSP lockBm{ bitmap };
+    AddSubBlockInfoStridedBitmap addSbBlkInfo;
+    addSbBlkInfo.Clear();
+    addSbBlkInfo.coordinate = CDimCoordinate::Parse("C0T0Z1");
+    addSbBlkInfo.mIndexValid = true;
+    addSbBlkInfo.mIndex = 0;
+    addSbBlkInfo.x = 0;
+    addSbBlkInfo.y = 0;
+    addSbBlkInfo.logicalWidth = bitmap->GetWidth();
+    addSbBlkInfo.logicalHeight = bitmap->GetHeight();
+    addSbBlkInfo.physicalWidth = bitmap->GetWidth();
+    addSbBlkInfo.physicalHeight = bitmap->GetHeight();
+    addSbBlkInfo.PixelType = bitmap->GetPixelType();
+    addSbBlkInfo.ptrBitmap = lockBm.ptrDataRoi;
+    addSbBlkInfo.strideBitmap = lockBm.stride;
+    writer->SyncAddSubBlock(addSbBlkInfo);
+
+    // now add it a second time - and expect an excpetion
+    EXPECT_THROW(writer->SyncAddSubBlock(addSbBlkInfo), LibCZIException);
+}
+
+TEST(CziWriter, TryAddingDuplicateSubBlocksToCziWriterAndWhenCheckIsDisable)
+{
+    CZIWriterOptions czi_writer_options;
+    czi_writer_options.allow_duplicate_subblocks = true;
+    const auto writer = CreateCZIWriter(&czi_writer_options);
+    const auto output_stream = make_shared<CMemOutputStream>(0);
+
+    const auto czi_writer_info = std::make_shared<libCZI::CCziWriterInfo>(GUID{ 0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0} });
+
+    writer->Create(output_stream, czi_writer_info);
+
+    auto bitmap = CreateTestBitmap(PixelType::Gray8, 64, 64);
+
+    ScopedBitmapLockerSP lockBm{ bitmap };
+    AddSubBlockInfoStridedBitmap addSbBlkInfo;
+    addSbBlkInfo.Clear();
+    addSbBlkInfo.coordinate = CDimCoordinate::Parse("C0T0Z1");
+    addSbBlkInfo.mIndexValid = true;
+    addSbBlkInfo.mIndex = 0;
+    addSbBlkInfo.x = 0;
+    addSbBlkInfo.y = 0;
+    addSbBlkInfo.logicalWidth = bitmap->GetWidth();
+    addSbBlkInfo.logicalHeight = bitmap->GetHeight();
+    addSbBlkInfo.physicalWidth = bitmap->GetWidth();
+    addSbBlkInfo.physicalHeight = bitmap->GetHeight();
+    addSbBlkInfo.PixelType = bitmap->GetPixelType();
+    addSbBlkInfo.ptrBitmap = lockBm.ptrDataRoi;
+    addSbBlkInfo.strideBitmap = lockBm.stride;
+    writer->SyncAddSubBlock(addSbBlkInfo);
+
+    // now add it a second time - this should now work (since we configured the writer to ignore
+    //  duplicate subblocks)
+    writer->SyncAddSubBlock(addSbBlkInfo);
+
+    auto metadataBuilder = writer->GetPreparedMetadata(PrepareMetadataInfo());
+    string xml = metadataBuilder->GetXml(true);
+    WriteMetadataInfo writerMdInfo = { 0 };
+    writerMdInfo.szMetadata = xml.c_str();
+    writerMdInfo.szMetadataSize = xml.size();
+    writer->SyncWriteMetadata(writerMdInfo);
+    writer->Close();
+
+    // let's open the CZI-document we created, and check that we now actually have two subblocks in there
+    size_t sizeBuffer = 0;
+    auto buffer = output_stream->GetCopy(&sizeBuffer);
+    ASSERT_TRUE(buffer != nullptr);
+    ASSERT_NE(sizeBuffer, 0);
+
+    auto input_stream = CreateStreamFromMemory(buffer, sizeBuffer);
+    const auto  reader = CreateCZIReader();
+    reader->Open(input_stream, nullptr);
+    auto statistics = reader->GetStatistics();
+    EXPECT_EQ(statistics.subBlockCount, 2);
 }

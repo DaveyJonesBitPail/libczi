@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include <utility>
 #include "BitmapOperations.h"
 #include "MD5Sum.h"
@@ -50,7 +49,7 @@ using namespace std;
 #else
     for (uint32_t y = 0; y < bm->GetHeight(); ++y)
     {
-        const std::uint8_t* ptr = ((const std::uint8_t*)lck.ptrDataRoi) + y * ((ptrdiff_t)lck.stride);
+        const std::uint8_t* ptr = static_cast<const std::uint8_t*>(lck.ptrDataRoi) + y * static_cast<ptrdiff_t>(lck.stride);
         md5sum.update(ptr, lineLength);
     }
 #endif
@@ -284,7 +283,7 @@ using namespace std;
     for (int y = 0; y < h; ++y)
     {
         void* p = static_cast<char*>(ptr) + (y * static_cast<ptrdiff_t>(stride));
-        memset(p, val, stride);
+        memset(p, val, w);
     }
 }
 

@@ -2,8 +2,9 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include "CziMetadataDocumentInfo.h"
+
+#include <utility>
 #include "CziDimensionInfo.h"
 #include "CziDisplaySettings.h"
 #include "utilities.h"
@@ -13,7 +14,7 @@ using namespace libCZI;
 using namespace std;
 
 CCziMetadataDocumentInfo::CCziMetadataDocumentInfo(std::shared_ptr<CCziMetadata> md)
-    : metadata(md)
+    : metadata(std::move(md))
 {
     this->ParseDimensionInfo();
 }
@@ -95,14 +96,14 @@ CCziMetadataDocumentInfo::CCziMetadataDocumentInfo(std::shared_ptr<CCziMetadata>
 
     static const struct
     {
-        char    dimChar;
+        wchar_t    dimChar;
         double(ScalingInfoEx::* scaleVarPtr);
         std::wstring(ScalingInfoEx::* defaultUnit);
     } dimScalingData[] =
     {
-        {'X', &ScalingInfoEx::scaleX, &ScalingInfoEx::defaultUnitFormatX},
-        {'Y', &ScalingInfoEx::scaleY, &ScalingInfoEx::defaultUnitFormatY},
-        {'Z', &ScalingInfoEx::scaleZ, &ScalingInfoEx::defaultUnitFormatZ},
+        {L'X', &ScalingInfoEx::scaleX, &ScalingInfoEx::defaultUnitFormatX},
+        {L'Y', &ScalingInfoEx::scaleY, &ScalingInfoEx::defaultUnitFormatY},
+        {L'Z', &ScalingInfoEx::scaleZ, &ScalingInfoEx::defaultUnitFormatZ},
     };
 
     for (const auto d : dimScalingData)
@@ -115,12 +116,13 @@ CCziMetadataDocumentInfo::CCziMetadataDocumentInfo(std::shared_ptr<CCziMetadata>
             scalingInfo.*d.scaleVarPtr = nodeScalingValue.node().text().as_double();
         }
 
-        ss = wstringstream();
+        ss.clear();
+        ss.str(L"");
         ss << L"Items/Distance[@Id='" << d.dimChar << L"']/DefaultUnitFormat";
         auto nodeScalingDefaultUnit = np.select_node(ss.str().c_str());
         if (!nodeScalingDefaultUnit.node().empty())
         {
-            scalingInfo.*d.defaultUnit = nodeScalingDefaultUnit.node().text().as_string();
+            scalingInfo.*d.defaultUnit = nodeScalingDefaultUnit.node().text().get();
         }
     }
 
@@ -327,33 +329,33 @@ CCziMetadataDocumentInfo::CCziMetadataDocumentInfo(std::shared_ptr<CCziMetadata>
                 [&](const std::wstring str)->bool
                 {
                     size_t charsParsed;
-            bool parsedOk = false;
-            double x;
-            try
-            {
-                x = std::stod(str, &charsParsed);
-                parsedOk = true;
-            }
-            catch (invalid_argument&)
-            {
-            }
+                    bool parsedOk = false;
+                    double x;
+                    try
+                    {
+                        x = std::stod(str, &charsParsed);
+                        parsedOk = true;
+                    }
+                    catch (invalid_argument&)
+                    {
+                    }
 
-            if (parsedOk == true)
-            {
-                if (charsParsed < str.length() && !isspace(str[charsParsed]))
-                {
-                    parsedOk = false;
-                }
-            }
+                    if (parsedOk == true)
+                    {
+                        if (charsParsed < str.length() && !isspace(str[charsParsed]))
+                        {
+                            parsedOk = false;
+                        }
+                    }
 
-            // TODO: currently, we stop parsing at the first syntax error and return what we have so far without an 
-            //        external error - what is the desired behavior here?
-            if (parsedOk == true)
-            {
-                data.push_back(x);
-            }
+                    // TODO: currently, we stop parsing at the first syntax error and return what we have so far without an 
+                    //        external error - what is the desired behavior here?
+                    if (parsedOk == true)
+                    {
+                        data.push_back(x);
+                    }
 
-            return parsedOk;
+                    return parsedOk;
                 });
 
             zinfo->SetListDefinition(std::move(data));
@@ -411,33 +413,33 @@ CCziMetadataDocumentInfo::CCziMetadataDocumentInfo(std::shared_ptr<CCziMetadata>
                 [&](const std::wstring str)->bool
                 {
                     size_t charsParsed;
-            bool parsedOk = false;
-            double x;
-            try
-            {
-                x = std::stod(str, &charsParsed);
-                parsedOk = true;
-            }
-            catch (invalid_argument&)
-            {
-            }
+                    bool parsedOk = false;
+                    double x;
+                    try
+                    {
+                        x = std::stod(str, &charsParsed);
+                        parsedOk = true;
+                    }
+                    catch (invalid_argument&)
+                    {
+                    }
 
-            if (parsedOk == true)
-            {
-                if (charsParsed < str.length() && !isspace(str[charsParsed]))
-                {
-                    parsedOk = false;
-                }
-            }
+                    if (parsedOk == true)
+                    {
+                        if (charsParsed < str.length() && !isspace(str[charsParsed]))
+                        {
+                            parsedOk = false;
+                        }
+                    }
 
-            // TODO: currently, we stop parsing at the first syntax error and return what we have so far without an 
-            //        external error - what is the desired behavior here?
-            if (parsedOk == true)
-            {
-                data.push_back(x);
-            }
+                    // TODO: currently, we stop parsing at the first syntax error and return what we have so far without an 
+                    //        external error - what is the desired behavior here?
+                    if (parsedOk == true)
+                    {
+                        data.push_back(x);
+                    }
 
-            return parsedOk;
+                    return parsedOk;
                 });
 
             tinfo->SetListDefinition(std::move(data));
@@ -527,7 +529,7 @@ pugi::xml_node CCziMetadataDocumentInfo::GetNode(const wchar_t* path) const
         [&](const std::wstring str)->bool
         {
             node = node.child(str.c_str());
-    return !node.empty();
+            return !node.empty();
         });
 
     return node;

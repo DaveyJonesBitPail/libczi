@@ -4,23 +4,12 @@
 
 #pragma once
 
-#include <memory>
 #include "libCZI.h"
 #include "inc_libCZI_Config.h"
-#include <fstream>
-
-/// <summary>   A simplistic stream implementation (based on C-runtime fopen). Note that this implementation is NOT thread-safe.</summary>
-class CSimpleStreamImpl : public libCZI::IStream
-{
-private:
-    FILE* fp;
-public:
-    CSimpleStreamImpl() = delete;
-    explicit CSimpleStreamImpl(const wchar_t* filename);
-    ~CSimpleStreamImpl() override;
-public: // interface libCZI::IStream
-    void Read(std::uint64_t offset, void* pv, std::uint64_t size, std::uint64_t* ptrBytesRead) override;
-};
+#include <memory>
+#if LIBCZI_WINDOWSAPI_AVAILABLE
+#include <Windows.h>
+#endif
 
 /// <summary>   A simplistic output-stream implementation (based on C-runtime fopen). Note that this implementation is NOT thread-safe.</summary>
 class CSimpleOutputStreamStreams : public libCZI::IOutputStream
@@ -35,34 +24,9 @@ public: // interface libCZI::IOutputStream
     void Write(std::uint64_t offset, const void* pv, std::uint64_t size, std::uint64_t* ptrBytesWritten) override;
 };
 
-/// <summary>   A simplistic stream implementation (based on C++ streams). Note that this implementation is NOT thread-safe.</summary>
-class CSimpleStreamImplCppStreams : public libCZI::IStream
-{
-private:
-    std::ifstream infile;
-public:
-    CSimpleStreamImplCppStreams() = delete;
-    explicit CSimpleStreamImplCppStreams(const wchar_t* filename);
-    ~CSimpleStreamImplCppStreams() override;
-public: // interface libCZI::IStream
-    void Read(std::uint64_t offset, void* pv, std::uint64_t size, std::uint64_t* ptrBytesRead) override;
-};
-
 #if LIBCZI_USE_PREADPWRITEBASED_STREAMIMPL
-/// <summary>   An input-stream implementation (based on open and pread). This implementation is thread-safe.</summary>
-class CStreamImplPread : public libCZI::IStream
-{
-private:
-    int fileDescriptor;
-public:
-    CStreamImplPread() = delete;
-    explicit CStreamImplPread(const wchar_t* filename);
-    ~CStreamImplPread() override;
-public: // interface libCZI::IStream
-    void Read(std::uint64_t offset, void* pv, std::uint64_t size, std::uint64_t* ptrBytesRead) override;
-};
 
-/// <summary>   An output-stream implementation (based on open and pwrite). This implementation is thread-safe.</summary>
+/// <summary>   An output-stream implementation (based on pwrite). This implementation is thread-safe.</summary>
 class COutputStreamImplPwrite : public libCZI::IOutputStream
 {
 private:
@@ -76,18 +40,7 @@ public: // interface libCZI::IOutputStream
 };
 #endif
 
-#if defined(_WIN32)
-class CSimpleStreamImplWindows : public libCZI::IStream
-{
-private:
-    HANDLE handle;
-public:
-    CSimpleStreamImplWindows() = delete;
-    explicit CSimpleStreamImplWindows(const wchar_t* filename);
-    ~CSimpleStreamImplWindows() override;
-public: // interface libCZI::IStream
-    void Read(std::uint64_t offset, void* pv, std::uint64_t size, std::uint64_t* ptrBytesRead) override;
-};
+#if LIBCZI_WINDOWSAPI_AVAILABLE
 
 class CSimpleOutputStreamImplWindows : public libCZI::IOutputStream
 {
@@ -131,7 +84,7 @@ public:
 };
 #endif
 
-#if defined(_WIN32)
+#if LIBCZI_WINDOWSAPI_AVAILABLE
 class CSimpleInputOutputStreamImplWindows : public libCZI::IInputOutputStream
 {
 private:

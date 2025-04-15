@@ -121,7 +121,7 @@ namespace libCZI
             : LibCZIException(szErrMsg), offset(offset), size(size) {}
 
         /// Gets the offset (in bytes) into the stream at which
-        /// the I/O-error occured.
+        /// the I/O-error occurred.
         ///
         /// \return The offset  (in bytes).
         std::uint64_t GetOffset() const { return this->offset; }
@@ -140,10 +140,11 @@ namespace libCZI
         /// Values that represent different error conditions.
         enum class ErrorCode
         {
-            NotEnoughData,                      ///< An enum constant representing that not the expected amount of data could be read.
-            CorruptedData,                      ///< An enum constant representing that the data was detected to be bogus.
-            NonConformingSubBlockDimensionEntry,///< An enum constant representing that the dimension-entry of a subblock was found to be non-conforming.
-            InternalError                       ///< An internal error was detected.
+            NotEnoughData,                              ///< An enum constant representing that not the expected amount of data could be read.
+            CorruptedData,                              ///< An enum constant representing that the data was detected to be bogus.
+            NonConformingSubBlockDimensionEntry,        ///< An enum constant representing that the dimension-entry of a subblock was found to be non-conforming.
+            SubBlockDirectoryToSubBlockHeaderMismatch,  ///< An enum constant representing that a discrepancy between information from subblock-directory and the subblock-header was detected.
+            InternalError                               ///< An internal error was detected.
         };
 
         /// Constructor for the LibCZICZIParseException. This type is used

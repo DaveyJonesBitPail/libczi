@@ -13,7 +13,6 @@
 
 #include "ImportExport.h"
 
-#include "priv_guiddef.h"
 #include "libCZI_exceptions.h"
 #include "libCZI_DimCoordinate.h"
 #include "libCZI_Pixels.h"
@@ -23,6 +22,7 @@
 #include "libCZI_Compositor.h"
 #include "libCZI_Site.h"
 #include "libCZI_compress.h"
+#include "libCZI_StreamsLib.h"
 
 // virtual d'tor -> https://isocpp.org/wiki/faq/virtual-functions#virtual-dtors
 
@@ -35,10 +35,8 @@ namespace libCZI
     enum class SiteObjectType
     {
         Default,        ///< An enum constant representing the default option (which is JXRLib)
-        WithJxrDecoder  ///< An enum constant representing a Site-object using the internal JXRLib.
-#if defined(_WIN32)
-        , WithWICDecoder///< An enum constant representing a Site-object using the Windows WIC-codec.
-#endif
+        WithJxrDecoder, ///< An enum constant representing a Site-object using the internal JXRLib.
+        WithWICDecoder, ///< An enum constant representing a Site-object using the Windows WIC-codec. Note that this option is only available on Windows.
     };
 
     class ISite;
@@ -66,6 +64,7 @@ namespace libCZI
     class IMetadataSegment;
     class ISubBlockRepository;
     class IAttachment;
+    class ISubBlockCache;
 
     /// This structure contains information about the compiler settings and the version of the source
     /// which was used to create the library.
@@ -101,18 +100,50 @@ namespace libCZI
     /// \return The newly created CZI-reader.
     LIBCZI_API std::shared_ptr<ICZIReader> CreateCZIReader();
 
+    /// Options controlling the operation of a CZI-writer object. Those options are set at construction
+    /// time and cannot be mutated afterwards.
+    struct CZIWriterOptions
+    {
+        /// True if the writer should allow that duplicate subblocks are added. In general, it is
+        /// not recommended to bypass the check for duplicate subblocks.
+        bool allow_duplicate_subblocks{ false };
+    };
+
     /// Creates a new instance of the CZI-writer class.
-    /// \return The newly created CZI-writer.
-    LIBCZI_API std::shared_ptr<ICziWriter> CreateCZIWriter();
+    /// \param  options (Optional) Options for controlling the operation. This argument may
+    ///                 be null, in which case default options are used.
+    /// \returns The newly created CZI-writer.
+    LIBCZI_API std::shared_ptr<ICziWriter> CreateCZIWriter(const CZIWriterOptions* options = nullptr);
 
     /// Creates a new instance of the CZI-reader-writer class.
     /// \return The newly created CZI-reader-writer.
     LIBCZI_API std::shared_ptr<ICziReaderWriter> CreateCZIReaderWriter();
 
+    /// This structure defines how to handle mismatches and discrepancies between sub-block information and the
+    /// actual pixel data. Please see the documentation about "Resolution Protocol for Ambiguous or Contradictory Information"
+    /// for details. For libCZI until version 0.63.2 the behavior was to throw an exception in case of a discrepancy
+    /// detected.
+    struct CreateBitmapOptions
+    {
+        /// In case of uncompressed pixel data, apply the resolution protocol for uncompressed data.
+        /// If false, an exception is thrown  (in case of a discrepancy).
+        bool handle_uncompressed_data_size_mismatch{ true };
+
+        /// In case of JpgXR compressed pixel data, apply the resolution protocol for JpgXR-compressed data.
+        /// If false, an exception is thrown  (in case of a discrepancy).
+        bool handle_jpgxr_bitmap_mismatch{ true };
+
+        /// In case of zstd compressed pixel data, apply the resolution protocol for zstd-compressed data.
+        /// If false, an exception is thrown  (in case of a discrepancy).
+        bool handle_zstd_data_size_mismatch{ true };
+    };
+
     /// Creates bitmap from sub block.
-    /// \param [in] subBlk The sub-block.
-    /// \return The newly allocated bitmap containing the image from the sub-block.
-    LIBCZI_API std::shared_ptr<IBitmapData>  CreateBitmapFromSubBlock(ISubBlock* subBlk);
+    /// \param      subBlk  The sub-block.
+    /// \param      options (Optional) Options for controlling the operation. This controls how discrepancies
+    ///                     between the actual pixel data and the information in the sub-block are handled.
+    /// \returns    The newly allocated bitmap containing the image from the sub-block.
+    LIBCZI_API std::shared_ptr<IBitmapData>  CreateBitmapFromSubBlock(ISubBlock* subBlk, const CreateBitmapOptions* options = nullptr);
 
     /// Creates metadata-object from a metadata segment.
     /// \param [in] metadataSegment The metadata segment object.
@@ -162,19 +193,31 @@ namespace libCZI
     /// \return The newly created metadata-builder-object.
     LIBCZI_API std::shared_ptr<ICziMetadataBuilder> CreateMetadataBuilder();
 
+    /// Creates a sub block cache object.
+    /// \returns    The newly created sub block cache.
+    LIBCZI_API std::shared_ptr<ISubBlockCache> CreateSubBlockCache();
+
     /// Creates metadata builder object from the specified UTF8-encoded XML-string. If the XML is
     /// invalid or if the root-node "ImageDocument" is not present, then an exception is thrown.
     /// \param  xml The UTF8-encoded XML string.
     /// \return The newly created metadata-builder-object.
     LIBCZI_API std::shared_ptr<ICziMetadataBuilder> CreateMetadataBuilderFromXml(const std::string& xml);
 
-
-    /// Interface used for accessing the data-stream.
-    ///
+    /// Interface used for accessing the data-stream.  
+    /// Implementations of this interface are expected to be thread-safe - it should be possible to
+    /// call the Read-method from multiple threads simultaneously.
+    /// In libCZI-usage, exceptions thrown by Read-method are wrapped into a libCZI::LibCZIIOException-exception,
+    /// where the exception thrown by the Read-method is stored as the inner exception.
     class IStream
     {
     public:
-        /// Reads the specified amount of data from the stream at the specified position.
+        /// Reads the specified amount of data from the stream at the specified position. This method
+        /// is expected to throw an exception for any kind of I/O-related error. It must not throw
+        /// an exception if reading past the end of a file - instead, it must return the number of
+        /// bytes actually read accordingly.
+        /// For the special case of size==0, the behavior should be as follows: the method should
+        /// operate as for a size>0, but it should not read any data. The method should return 0 in
+        /// ptrBytesRead.
         ///
         /// \param offset                The offset to start reading from.
         /// \param [out] pv              The caller-provided buffer for the data. Must be non-null.
@@ -311,7 +354,7 @@ namespace libCZI
         /// keep a reference (and return the same bitmap if called twice).
         /// In current version this method is equivalent to calling CreateBitmapFromSubBlock.
         /// \return The bitmap (contained in this sub-block).
-        virtual std::shared_ptr<IBitmapData> CreateBitmap() = 0;
+        virtual std::shared_ptr<IBitmapData> CreateBitmap(const CreateBitmapOptions* options = nullptr) = 0;
 
         virtual ~ISubBlock() = default;
 
@@ -331,9 +374,9 @@ namespace libCZI
     /// Information about an attachment.
     struct AttachmentInfo
     {
-        GUID        contentGuid;            ///< A Guid identifying the content of the attachment.
-        char        contentFileType[9];     ///< A null-terminated character array identifying the content of the attachment.
-        std::string name;                   ///< A string identifying the content of the attachment.
+        libCZI::GUID    contentGuid;            ///< A Guid identifying the content of the attachment.
+        char            contentFileType[9];     ///< A null-terminated character array identifying the content of the attachment.
+        std::string     name;                   ///< A string identifying the content of the attachment.
     };
 
     /// Representation of an attachment. An attachment is a binary blob, its inner structure is opaque.
@@ -425,12 +468,14 @@ namespace libCZI
         /// If no valid M-index was present, then this member will have the value std::numeric_limits<int>::min().
         int maxMindex;
 
-        /// The bounding box determined from all sub-blocks in the 
+        /// The minimal axis-aligned-bounding-box determined from all logical coordinates of all sub-blocks in the 
         /// document.
         IntRect boundingBox;
 
-        /// The bounding box determined only from the sub-blocks of pyramid-layer0 in the 
-        /// document.
+        /// The minimal axis-aligned-bounding box determined only from the logical coordinates of the sub-blocks on pyramid-layer0 in the 
+        /// document. The top-left corner of this bounding-box gives the coordinate of the origin of the 'CZI-Pixel-Coordinate-System' in
+        /// the coordinate system used by libCZI (which is refered to as 'raw-subblock-coordinate-system'). See @ref coordinatesystems for
+        /// additional information.
         IntRect boundingBoxLayer0Only;
 
         /// The dimension bounds - the minimum and maximum dimension index determined
@@ -563,7 +608,29 @@ namespace libCZI
         /// \return The pyramid statistics.
         virtual PyramidStatistics GetPyramidStatistics() = 0;
 
+        virtual libCZI::IntPointAndFrameOfReference TransformPoint(const libCZI::IntPointAndFrameOfReference& source_point, libCZI::CZIFrameOfReference destination_frame_of_reference) = 0;
+
         virtual ~ISubBlockRepository() = default;
+
+        libCZI::IntRectAndFrameOfReference TransformRectangle(const libCZI::IntRectAndFrameOfReference& source_rectangle, libCZI::CZIFrameOfReference destination_frame_of_reference)
+        {
+            libCZI::IntPointAndFrameOfReference source_point_and_frame_of_reference;
+            source_point_and_frame_of_reference.frame_of_reference = source_rectangle.frame_of_reference;
+            source_point_and_frame_of_reference.point = { source_rectangle.rectangle.x, source_rectangle.rectangle.y };
+            libCZI::IntPoint transformed_point_upper_left = this->TransformPoint(source_point_and_frame_of_reference, destination_frame_of_reference).point;
+            source_point_and_frame_of_reference.point = { source_rectangle.rectangle.x + source_rectangle.rectangle.w, source_rectangle.rectangle.y + source_rectangle.rectangle.h };
+            libCZI::IntPointAndFrameOfReference transformed_point_lower_right = this->TransformPoint(source_point_and_frame_of_reference, destination_frame_of_reference);
+            return
+            {
+                transformed_point_lower_right.frame_of_reference,
+                {
+                    transformed_point_upper_left.x,
+                    transformed_point_upper_left.y,
+                    transformed_point_lower_right.point.x - transformed_point_upper_left.x,
+                    transformed_point_lower_right.point.y - transformed_point_upper_left.y
+                }
+            };
+        }
     };
 
     /// Additional functionality for the subblock-repository, providing some specialized and not commonly used functionality.
@@ -614,20 +681,39 @@ namespace libCZI
     /// Global information about the CZI-file (from the CZI-fileheader-segment).
     struct FileHeaderInfo
     {
-        ///< The file-GUID of the CZI. Note: CZI defines two GUIDs, this is the "FileGuid". Multi-file containers 
+        /// The file-GUID of the CZI. Note: CZI defines two GUIDs, this is the "FileGuid". Multi-file containers 
         /// (for which the other GUID "PrimaryFileGuid" is used) are not supported by libCZI currently.
-        GUID fileGuid;
+        libCZI::GUID fileGuid;
         int majorVersion;   ///< The major version.
         int minorVersion;   ///< The minor version.
     };
 
     /// This interface is used to represent the CZI-file.
+    /// A note on thread-safety - all methods of this interface may be called from multiple threads concurrently.
     class LIBCZI_API ICZIReader : public ISubBlockRepository, public ISubBlockRepositoryEx, public IAttachmentRepository
     {
     public:
         /// This structure gathers the settings for controlling the 'Open' operation of the CZIReader-class.
         struct LIBCZI_API OpenOptions
         {
+            /// This enum is used to specify the policy which defines which information is considered authoritative (in the description
+            /// of a sub-block) - either the information in the sub-block directory or in the sub-block header. Also, it
+            /// controls how to handle a discrepancy here - either throw an exception if a discrepancy is encountered or ignore
+            /// a discrepancy (and go with the respective information for decoding a bitmap as is).
+            /// Note that the values defined here are used to define a bit-field. The first bit (bit 0) is used to
+            /// distinguish between sub-block-directory precedence and sub-block-header precedence. The value 'PrecedenceMask'
+            /// is used to mask this bit. Bit 7 is used to indicate whether a discrepancy is to be ignored or whether an error
+            /// is to be reported.
+            /// Historically, libCZI (up to version 0.63.2) used to give precedence fo the sub-block header information,
+            /// and it did not report a discrepancy.
+            enum class SubBlockDirectoryInfoPolicy : std::uint8_t
+            {
+                SubBlockDirectoryPrecedence = 0, ///< The sub-block-directory information is used for the sub-blocks.
+                SubBlockHeaderPrecedence = 1,    ///< The sub-block information is used for the sub-blocks.
+                PrecedenceMask = 1,              ///< Bit-mask allowing to extract the relevant bits for "precedence".
+                IgnoreDiscrepancy = 0x80,        ///< Flag allowing to choose whether a discrepancy is to be ignored (true) or whether an exception is to be thrown (false) when accessing the sub-block.
+            };
+
             /// This option controls whether the lax parameter validation when parsing the dimension-entry of a subblock is to be used.
             /// Previous versions of libCZI did not check whether certain values in the file have the expected value. If those values
             /// are different than expected, this meant that libCZI would not be able to deal with the document properly.  
@@ -642,12 +728,26 @@ namespace libCZI
             /// This is useful as some versions of software creating CZI-files used to write bogus values for size-M, and those files
             /// would otherwise not be usable with strict validation enabled. If this bogus size-M is ignored, then the files can be used
             /// without problems.
-            bool ignore_sizem_for_pyramid_subblocks{ false };   
+            bool ignore_sizem_for_pyramid_subblocks{ false };
 
-            /// Sets the the default.
+            /// The default frame-of-reference which is to be used by the reader-object. This determines which frame-of-reference
+            /// is used when the enum value "CZIFrameOfReference::Default" is used with an operation of the reader-object.
+            /// If the value specified here is "CZIFrameOfReference::Invalid" or "CZIFrameOfReference::Default", then 
+            /// "CZIFrameOfReference::RawSubBlockCoordinateSystem" will be used.
+            libCZI::CZIFrameOfReference default_frame_of_reference{ libCZI::CZIFrameOfReference::Invalid };
+
+            /// This bitfield is used to specify the policy which information is considered authoritative in the construction of a sub-block -
+            /// either the information in the sub-block directory or in the sub-block header. Also, it controls how to handle a discrepancy 
+            /// in this respect - either throw an exception if a discrepancy is encountered or ignore it.
+            SubBlockDirectoryInfoPolicy subBlockDirectoryInfoPolicy{ SubBlockDirectoryInfoPolicy::SubBlockDirectoryPrecedence };
+
+            /// Sets the default.
             void SetDefault()
             {
                 this->lax_subblock_coordinate_checks = true;
+                this->ignore_sizem_for_pyramid_subblocks = false;
+                this->default_frame_of_reference = libCZI::CZIFrameOfReference::Invalid;
+                this->subBlockDirectoryInfoPolicy = SubBlockDirectoryInfoPolicy::SubBlockDirectoryPrecedence;
             }
         };
 
@@ -677,7 +777,7 @@ namespace libCZI
         /// Creates an accessor for the sub-blocks.
         /// See also the various typed methods: `CreateSingleChannelTileAccessor`, `CreateSingleChannelPyramidLayerTileAccessor` and `CreateSingleChannelScalingTileAccessor`.
         /// \remark
-        /// If the class is not operational (i. e. Open was not called or Open was not successful), then an exception of type std::logic_error is thrown.
+        /// If the class is not operational (i.e. Open was not called or Open was not successful), then an exception of type std::logic_error is thrown.
         ///
         /// \param accessorType The type of the accessor.
         ///
@@ -686,8 +786,10 @@ namespace libCZI
 
         /// Closes CZI-reader. The underlying stream-object will be released, and further calls to
         /// other methods will fail. The stream is also closed when the object is destroyed, so it
-        /// is usually not necessary to explicitly call `Close`. Also, take care that the ownership of
-        /// the class must be defined when calling `Close`.
+        /// is usually not necessary to explicitly call `Close`. Note that the stream is not closed
+        /// immediately (or - there is no guarantee that on return from this call all references to the 
+        /// stream object are released). Concurrently executing operations continue to use the stream
+        /// and keep it referenced until they are finished.
         virtual void Close() = 0;
     public:
         /// Creates a single channel tile accessor.

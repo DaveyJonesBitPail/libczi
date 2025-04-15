@@ -2,15 +2,17 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
-#include <limits>
+#include "inc_CZIcmd_Config.h"
 #include "execute.h"
+#include "executeBase.h"
 #include "executeCreateCzi.h"
+#include "executePlaneScan.h"
 #include "inc_libCZI.h"
 #include "SaveBitmap.h"
 #include "utils.h"
 #include "DisplaySettingsHelper.h"
 #include "inc_rapidjson.h"
+#include <limits>
 #include <iomanip>
 #include <map>
 #include <fstream>
@@ -18,71 +20,6 @@
 using namespace libCZI;
 using namespace std;
 using namespace rapidjson;
-
-class CExecuteBase
-{
-protected:
-    static std::shared_ptr<ICZIReader> CreateAndOpenCziReader(const CCmdLineOptions& options)
-    {
-        return CreateAndOpenCziReader(options.GetCZIFilename().c_str());
-    }
-
-    static std::shared_ptr<ICZIReader> CreateAndOpenCziReader(const wchar_t* fileName)
-    {
-        auto stream = libCZI::CreateStreamFromFile(fileName);
-        auto spReader = libCZI::CreateCZIReader();
-        spReader->Open(stream);
-        return spReader;
-    }
-
-    static IntRect GetRoiFromOptions(const CCmdLineOptions& options, const SubBlockStatistics& subBlockStatistics)
-    {
-        IntRect roi{ options.GetRectX(), options.GetRectY(), options.GetRectW(), options.GetRectH() };
-        if (options.GetIsRelativeRectCoordinate())
-        {
-            roi.x += subBlockStatistics.boundingBox.x;
-            roi.y += subBlockStatistics.boundingBox.y;
-        }
-
-        return roi;
-    }
-
-    static libCZI::RgbFloatColor GetBackgroundColorFromOptions(const CCmdLineOptions& options)
-    {
-        return options.GetBackGroundColor();
-    }
-
-    static void DoCalcHashOfResult(shared_ptr<libCZI::IBitmapData> bm, const CCmdLineOptions& options)
-    {
-        DoCalcHashOfResult(bm.get(), options);
-    }
-
-    static void HandleHashOfResult(std::function<bool(uint8_t*, size_t)> f, const CCmdLineOptions& options)
-    {
-        if (!options.GetCalcHashOfResult())
-            return;
-
-        uint8_t md5sumHash[16];
-        if (!f(md5sumHash, sizeof(md5sumHash)))
-            return;
-        string hashHex = BytesToHexString(md5sumHash, sizeof(md5sumHash));
-        std::stringstream ss;
-        ss << "hash of result: " << hashHex;
-        auto log = options.GetLog();
-        log->WriteLineStdOut(ss.str().c_str());
-    }
-
-    static void DoCalcHashOfResult(libCZI::IBitmapData* bm, const CCmdLineOptions& options)
-    {
-        HandleHashOfResult(
-            [&](uint8_t* ptrHash, size_t size)->bool
-            {
-                Utils::CalcMd5SumHash(bm, ptrHash, (int)size);
-        return true;
-            },
-            options);
-    }
-};
 
 class CExecutePrintInformation : CExecuteBase
 {
@@ -160,7 +97,7 @@ private:
             [&](int index, const AttachmentInfo& info)->bool
             {
                 ++mapAttchmntName[info.name];
-        return true;
+                return true;
             });
 
         if (mapAttchmntName.empty())
@@ -244,10 +181,10 @@ private:
                     options.GetLog()->WriteLineStdOut("------+----------+----------------------------------------+-------------");
                 }
 
-        stringstream ss;
-        ss << setw(5) << index << " | " << setw(8) << std::left << info.contentFileType << " | {" << info.contentGuid << "} | " << info.name;
-        options.GetLog()->WriteLineStdOut(ss.str());
-        return true;
+                stringstream ss;
+                ss << setw(5) << index << " | " << setw(8) << std::left << info.contentFileType << " | {" << info.contentGuid << "} | " << info.name;
+                options.GetLog()->WriteLineStdOut(ss.str());
+                return true;
             });
     }
 
@@ -260,26 +197,26 @@ private:
             [&](int index, const SubBlockInfo& info)->bool
             {
                 stringstream ss;
-        ss << "#" << index << ": " << Utils::DimCoordinateToString(&info.coordinate);
-        if (info.IsMindexValid())
-        {
-            ss << " M=" << info.mIndex;
-        }
+                ss << "#" << index << ": " << Utils::DimCoordinateToString(&info.coordinate);
+                if (info.IsMindexValid())
+                {
+                    ss << " M=" << info.mIndex;
+                }
 
-        ss << " logical=" << info.logicalRect << " phys.=" << info.physicalSize;
-        ss << " pixeltype=" << Utils::PixelTypeToInformalString(info.pixelType);
-        auto compressionMode = info.GetCompressionMode();
-        if (compressionMode != CompressionMode::Invalid)
-        {
-            ss << " compression=" << Utils::CompressionModeToInformalString(compressionMode);
-        }
-        else
-        {
-            ss << " compression=" << Utils::CompressionModeToInformalString(compressionMode) << "(" << info.compressionModeRaw << ")";
-        }
+                ss << " logical=" << info.logicalRect << " phys.=" << info.physicalSize;
+                ss << " pixeltype=" << Utils::PixelTypeToInformalString(info.pixelType);
+                auto compressionMode = info.GetCompressionMode();
+                if (compressionMode != CompressionMode::Invalid)
+                {
+                    ss << " compression=" << Utils::CompressionModeToInformalString(compressionMode);
+                }
+                else
+                {
+                    ss << " compression=" << Utils::CompressionModeToInformalString(compressionMode) << "(" << info.compressionModeRaw << ")";
+                }
 
-        options.GetLog()->WriteLineStdOut(ss.str());
-        return true;
+                options.GetLog()->WriteLineStdOut(ss.str());
+                return true;
             });
     }
 
@@ -317,8 +254,8 @@ private:
             [&](int chIdx)->bool
             {
                 auto dsplChannelSettings = dsplSettings->GetChannelDisplaySettings(chIdx);
-        PrintDisplaySettingsForChannel(chIdx, dsplChannelSettings.get(), options);
-        return true;
+                PrintDisplaySettingsForChannel(chIdx, dsplChannelSettings.get(), options);
+                return true;
             });
     }
 
@@ -409,71 +346,71 @@ private:
             [&](int chIdx)->bool
             {
                 auto dsplChannelSettings = dsplSettings->GetChannelDisplaySettings(chIdx);
-        if (dsplChannelSettings->GetIsEnabled())
-        {
-            writer.StartObject();
-            writer.String("ch");
-            writer.Int(chIdx);
-            float wght = dsplChannelSettings->GetWeight();
-            if (abs(wght - 1) > std::numeric_limits<float>::epsilon())
-            {
-                writer.String("weight");
-                writer.Double(wght);
-            }
-
-            float blkPt, whtPt;
-            dsplChannelSettings->GetBlackWhitePoint(&blkPt, &whtPt);
-            {
-                writer.String("black-point");
-                writer.Double(blkPt);
-                writer.String("white-point");
-                writer.Double(whtPt);
-            }
-
-            Rgb8Color tinting_color;
-            if (dsplChannelSettings->TryGetTintingColorRgb8(&tinting_color))
-            {
-                writer.String("tinting");
-                stringstream ss;
-                ss << '#' << std::hex
-                    << std::setfill('0') << std::setw(2) << (int)tinting_color.r
-                    << std::setfill('0') << std::setw(2) << (int)tinting_color.g
-                    << std::setfill('0') << std::setw(2) << (int)tinting_color.b;
-                writer.String(ss.str());
-            }
-
-            switch (dsplChannelSettings->GetGradationCurveMode())
-            {
-            case IDisplaySettings::GradationCurveMode::Gamma:
-            {
-                float gamma;
-                dsplChannelSettings->TryGetGamma(&gamma);
-                writer.String("gamma");
-                writer.Double(gamma);
-            }
-            break;
-            case IDisplaySettings::GradationCurveMode::Spline:
-            {
-                std::vector<libCZI::IDisplaySettings::SplineControlPoint> ctrlPoints;
-                dsplChannelSettings->TryGetSplineControlPoints(&ctrlPoints);
-                writer.String("splinelut");
-                writer.StartArray();
-                for (const auto& ctrlPt : ctrlPoints)
+                if (dsplChannelSettings->GetIsEnabled())
                 {
-                    writer.Double(ctrlPt.x);
-                    writer.Double(ctrlPt.y);
+                    writer.StartObject();
+                    writer.String("ch");
+                    writer.Int(chIdx);
+                    float wght = dsplChannelSettings->GetWeight();
+                    if (abs(wght - 1) > std::numeric_limits<float>::epsilon())
+                    {
+                        writer.String("weight");
+                        writer.Double(wght);
+                    }
+
+                    float blkPt, whtPt;
+                    dsplChannelSettings->GetBlackWhitePoint(&blkPt, &whtPt);
+                    {
+                        writer.String("black-point");
+                        writer.Double(blkPt);
+                        writer.String("white-point");
+                        writer.Double(whtPt);
+                    }
+
+                    Rgb8Color tinting_color;
+                    if (dsplChannelSettings->TryGetTintingColorRgb8(&tinting_color))
+                    {
+                        writer.String("tinting");
+                        stringstream ss;
+                        ss << '#' << std::hex
+                            << std::setfill('0') << std::setw(2) << (int)tinting_color.r
+                            << std::setfill('0') << std::setw(2) << (int)tinting_color.g
+                            << std::setfill('0') << std::setw(2) << (int)tinting_color.b;
+                        writer.String(ss.str());
+                    }
+
+                    switch (dsplChannelSettings->GetGradationCurveMode())
+                    {
+                    case IDisplaySettings::GradationCurveMode::Gamma:
+                    {
+                        float gamma;
+                        dsplChannelSettings->TryGetGamma(&gamma);
+                        writer.String("gamma");
+                        writer.Double(gamma);
+                    }
+                    break;
+                    case IDisplaySettings::GradationCurveMode::Spline:
+                    {
+                        std::vector<libCZI::IDisplaySettings::SplineControlPoint> ctrlPoints;
+                        dsplChannelSettings->TryGetSplineControlPoints(&ctrlPoints);
+                        writer.String("splinelut");
+                        writer.StartArray();
+                        for (const auto& ctrlPt : ctrlPoints)
+                        {
+                            writer.Double(ctrlPt.x);
+                            writer.Double(ctrlPt.y);
+                        }
+                        writer.EndArray();
+                    }
+                    break;
+                    default:
+                        break;
+                    }
+
+                    writer.EndObject();
                 }
-                writer.EndArray();
-            }
-            break;
-            default:
-                break;
-            }
 
-            writer.EndObject();
-        }
-
-        return true;
+                return true;
             });
 
         writer.EndArray();
@@ -518,7 +455,7 @@ private:
             [&](libCZI::DimensionIndex dim, int start, int size)->bool
             {
                 ss << " " << Utils::DimensionToChar(dim) << " -> Start=" << start << " Size=" << size << endl;
-        return true;
+                return true;
             });
 
         if (!sbStatistics.sceneBoundingBoxes.empty())
@@ -616,13 +553,16 @@ public:
         libCZI::ISingleChannelTileAccessor::Options sctaOptions; sctaOptions.Clear();
         sctaOptions.sortByM = true;
         sctaOptions.drawTileBorder = options.GetDrawTileBoundaries();
+        sctaOptions.backGroundColor = GetBackgroundColorFromOptions(options);
+        sctaOptions.sceneFilter = options.GetSceneIndexSet();
+        sctaOptions.useVisibilityCheckOptimization = options.GetUseVisibilityCheckOptimization();
 
-        IntRect roi{ options.GetRectX() ,options.GetRectY(),options.GetRectW(),options.GetRectH() };
+        IntRect roi{ options.GetRectX(), options.GetRectY(), options.GetRectW(), options.GetRectH() };
         if (options.GetIsRelativeRectCoordinate())
         {
             auto statistics = spReader->GetStatistics();
-            roi.x += statistics.boundingBox.x;
-            roi.y += statistics.boundingBox.y;
+            roi.x += statistics.boundingBoxLayer0Only.x;
+            roi.y += statistics.boundingBoxLayer0Only.y;
         }
 
         auto re = accessor->Get(roi, &coordinate, &sctaOptions);
@@ -679,13 +619,13 @@ public:
                     return true;
                 }
 
-        return false;
+                return false;
             });
 
         dsplHlp.Initialize(dsplSettings.get(), [&](int chIndx)->libCZI::PixelType
             {
                 int idx = (int)std::distance(activeChannels.cbegin(), std::find(activeChannels.cbegin(), activeChannels.cend(), chIndx));
-        return channelBitmaps[idx]->GetPixelType();
+                return channelBitmaps[idx]->GetPixelType();
             });
 
         shared_ptr<IBitmapData> mcComposite;
@@ -737,8 +677,8 @@ private:
         IntRect roi{ options.GetRectX() ,options.GetRectY() ,options.GetRectW(),options.GetRectH() };
         if (options.GetIsRelativeRectCoordinate())
         {
-            roi.x += subBlockStatistics.boundingBox.x;
-            roi.y += subBlockStatistics.boundingBox.y;
+            roi.x += subBlockStatistics.boundingBoxLayer0Only.x;
+            roi.y += subBlockStatistics.boundingBoxLayer0Only.y;
         }
 
         auto accessor = reader->CreateSingleChannelTileAccessor();
@@ -811,6 +751,7 @@ public:
         libCZI::ISingleChannelScalingTileAccessor::Options scstaOptions; scstaOptions.Clear();
         scstaOptions.backGroundColor = GetBackgroundColorFromOptions(options);
         scstaOptions.sceneFilter = options.GetSceneIndexSet();
+        scstaOptions.useVisibilityCheckOptimization = options.GetUseVisibilityCheckOptimization();
 
         auto re = accessor->Get(roi, &coordinate, options.GetZoom(), &scstaOptions);
 
@@ -862,13 +803,13 @@ public:
                     return true;
                 }
 
-        return false;
+                return false;
             });
 
         dsplHlp.Initialize(dsplSettings.get(), [&](int chIndx)->libCZI::PixelType
             {
                 int idx = (int)std::distance(activeChannels.cbegin(), std::find(activeChannels.cbegin(), activeChannels.cend(), chIndx));
-        return channelBitmaps[idx]->GetPixelType();
+                return channelBitmaps[idx]->GetPixelType();
             });
 
         shared_ptr<IBitmapData> mcComposite;
@@ -917,11 +858,12 @@ private:
         sctaOptions.backGroundColor = GetBackgroundColorFromOptions(options);
         sctaOptions.drawTileBorder = options.GetDrawTileBoundaries();
         sctaOptions.sceneFilter = options.GetSceneIndexSet();
+        sctaOptions.useVisibilityCheckOptimization = options.GetUseVisibilityCheckOptimization();
         IntRect roi{ options.GetRectX() ,options.GetRectY() ,options.GetRectW(),options.GetRectH() };
         if (options.GetIsRelativeRectCoordinate())
         {
-            roi.x += subBlockStatistics.boundingBox.x;
-            roi.y += subBlockStatistics.boundingBox.y;
+            roi.x += subBlockStatistics.boundingBoxLayer0Only.x;
+            roi.y += subBlockStatistics.boundingBoxLayer0Only.y;
         }
 
         auto accessor = reader->CreateSingleChannelScalingTileAccessor();
@@ -968,28 +910,28 @@ public:
     {
         SelectionInfo selectionInfo = CreateSelectionInfo(options);
 
-        auto spReader = CreateAndOpenCziReader(options);
+        const auto spReader = CreateAndOpenCziReader(options);
 
         spReader->EnumerateAttachments(
             [&](int index, const AttachmentInfo& info)->bool
             {
                 if (IsSelection(index, info, selectionInfo))
                 {
-                    auto filename = GenerateFilename(index, info, options);
-                    auto attchmnt = spReader->ReadAttachment(index);
-                    WriteFile(filename, attchmnt.get());
+                    const auto filename = GenerateFilename(index, info, options);
+                    const auto attachment = spReader->ReadAttachment(index);
+                    WriteFile(filename, attachment.get());
                     HandleHashOfResult(
                         [&](uint8_t* ptrHash, size_t sizeHash)->bool
                         {
                             const void* ptr; size_t size;
-                    attchmnt->DangerousGetRawData(ptr, size);
-                    Utils::CalcMd5SumHash(ptr, size, ptrHash, (int)sizeHash);
-                    return true;
+                            attachment->DangerousGetRawData(ptr, size);
+                            Utils::CalcMd5SumHash(ptr, size, ptrHash, (int)sizeHash);
+                            return true;
                         },
                         options);
                 }
 
-        return true;
+                return true;
             });
 
         return true;
@@ -1043,13 +985,13 @@ private:
         }
         else
         {
-            extension = convertUtf8ToUCS2(info.contentFileType);
+            extension = convertUtf8ToWide(info.contentFileType);
         }
 
         std::wstring suffix(L"_");
         if (info.name.length() > 0)
         {
-            suffix += convertUtf8ToUCS2(info.name);
+            suffix += convertUtf8ToWide(info.name);
             suffix += L'_';
         }
 
@@ -1061,19 +1003,31 @@ private:
 
     static void WriteFile(const wstring& filename, IAttachment* attchment)
     {
+        auto file_deleter = [](FILE* file)
+        {
+            if (file) 
+            {
+                fclose(file);
+            }
+        };
+
+        std::unique_ptr<FILE, decltype(file_deleter)> file_handle(nullptr, file_deleter);
+#ifdef _WIN32
+        file_handle.reset(_wfopen(filename.c_str(), L"wb"));
+#else
+        file_handle.reset(fopen(convertToUtf8(filename).c_str(), "wb"));
+#endif
+        if (!file_handle)
+        {
+            throw std::runtime_error("Cannot open file for writing");
+        }
+
         size_t size;
         auto spData = attchment->GetRawData(&size);
-
-        std::ofstream  output;
-        output.exceptions(std::ifstream::badbit | std::ifstream::failbit);
-#if defined(WIN32ENV)
-        output.open(filename, ios::out | ios::binary);
-#endif
-#if defined(LINUXENV)
-        output.open(convertToUtf8(filename), ios::out | ios::binary);
-#endif
-        output.write(static_cast<const char*>(spData.get()), size);
-        output.close();
+        if (fwrite(spData.get(), 1, size, file_handle.get()) != size)
+        {
+            throw std::runtime_error("Error writing file");
+        }
     }
 };
 
@@ -1105,12 +1059,12 @@ public:
                         [&](uint8_t* ptrHash, size_t sizeHash)->bool
                         {
                             Utils::CalcMd5SumHash(bm.get(), ptrHash, (int)sizeHash);
-                    return true;
+                            return true;
                         },
                         options);
                 }
 
-        return true;
+                return true;
             });
 
         return true;
@@ -1190,15 +1144,36 @@ bool execute(const CCmdLineOptions& options)
         case Command::CreateCZI:
             success = executeCreateCzi(options);
             break;
+        case Command::PlaneScan:
+            success = executePlaneScan(options);
+            break;
         default:
             break;
         }
+    }
+    catch (libCZI::LibCZIIOException& libCZI_io_exception)
+    {
+        std::wstringstream ss;
+        string what(libCZI_io_exception.what() != nullptr ? libCZI_io_exception.what() : "");
+        ss << "LibCZIIOException caught -> \"" << convertUtf8ToWide(what) << "\"";
+        try
+        {
+            libCZI_io_exception.rethrow_nested();
+        }
+        catch (std::exception& inner_exception)
+        {
+            what = inner_exception.what() != nullptr ? inner_exception.what() : "";
+            ss << endl << " nested exception -> \"" << convertUtf8ToWide(what) << "\"";
+        }
+
+        options.GetLog()->WriteLineStdErr(ss.str());
+        success = false;
     }
     catch (std::exception& excp)
     {
         wstringstream ss;
         string what(excp.what() != nullptr ? excp.what() : "");
-        ss << "FATAL ERROR: std::exception caught" << endl << " -> " << convertUtf8ToUCS2(what);
+        ss << "FATAL ERROR: std::exception caught" << endl << " -> " << convertUtf8ToWide(what);
         options.GetLog()->WriteLineStdErr(ss.str());
         success = false;
     }

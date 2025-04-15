@@ -2,22 +2,18 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include "CziMetadataSegment.h"
 #include "CziUtils.h"
 
 using namespace libCZI;
 
-CCziMetadataSegment::CCziMetadataSegment(const CCZIParse::MetadataSegmentData& data, std::function<void(void*)> deleter)
+CCziMetadataSegment::CCziMetadataSegment(const CCZIParse::MetadataSegmentData& data, const std::function<void(void*)>& deleter)
     : spXmlData(std::shared_ptr<const void>(data.ptrXmlData, deleter)),
     spAttachment(std::shared_ptr<const void>(data.ptrAttachment, deleter)),
     xmlDataSize(data.xmlDataSize),
     attachmentSize(data.attachmentSize)
 {
 }
-
-CCziMetadataSegment::~CCziMetadataSegment()
-{}
 
 // interface ISubBlock
 /*virtual*/void CCziMetadataSegment::DangerousGetRawData(MemBlkType type, const void*& ptr, size_t& size) const

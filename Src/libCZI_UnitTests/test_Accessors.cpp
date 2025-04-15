@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "pch.h"
+#include "include_gtest.h"
 #include <array>
 #include <tuple>
 #include <memory>
@@ -576,7 +576,7 @@ TEST(Accessor, CreateDocumentAndExerciseScalingAccessorAllowingForInaccuracy)
 
     // act
     constexpr float zoom = 1 - numeric_limits<float>::epsilon();    // use a zoom a tiny bit less than 1
-    IntSize resulting_size = accessor->CalcSize(IntRect{ 0,0,5121,5121 }, zoom);
+    const IntSize resulting_size = accessor->CalcSize(IntRect{ 0,0,5121,5121 }, zoom);
     const auto composite_bitmap = accessor->Get(
         PixelType::Gray8,
         IntRect{ 0,0,5121,5121 },
@@ -596,10 +596,10 @@ TEST(Accessor, CreateDocumentAndExerciseScalingAccessorAllowingForInaccuracy)
     {
         for (size_t x = 0; x < composite_bitmap->GetWidth(); ++x)
         {
-            uint8_t expected_value = (x < 761 && y >= 2671 && y < 2671 + 2449) ? 0x2a : 0;
+            const uint8_t expected_value = (x < 761 && y >= 2671 && y < 2671 + 2449) ? 0x2a : 0;
 
             // allow both values for the exact borders of the subblock, i.e. allow for the bitmap to be one pixel smaller on the edges
-            bool inaccuracy_allowed = ((y == 2670 || y == 2671 || y == 2670 + 2449 || y == 2671 + 2449) && (x < 760));
+            const bool inaccuracy_allowed = ((y == 2670 || y == 2671 || y == 2670 + 2449 || y == 2671 + 2449) && (x < 760));
             const uint8_t* p = static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + y * lock_info_bitmap.stride + x;
             if (*p != expected_value)
             {
@@ -669,4 +669,77 @@ TEST(Accessor, CreateDocumentAndCheckSingleChannelScalingAccessor1)
     EXPECT_EQ(pixel_x1_y0, 2);
     EXPECT_EQ(pixel_x0_y1, 3);
     EXPECT_EQ(pixel_x1_y1, 4);
+}
+
+TEST(Accessor, CreateDocumentAndCheckSingleChannelScalingAccessorWithSubBlockCache)
+{
+    // we use the same CZI-document as before, but we use subblock-cache 
+    auto czi_document_as_blob = CreateCziWithFourSubblockInMosaicArragengement();
+
+    const auto memory_stream = make_shared<CMemInputOutputStream>(get<0>(czi_document_as_blob).get(), get<1>(czi_document_as_blob));
+    const auto reader = CreateCZIReader();
+    reader->Open(memory_stream);
+
+    const auto accessor = reader->CreateSingleChannelScalingTileAccessor();
+    const auto subblock_cache = CreateSubBlockCache();
+    const CDimCoordinate plane_coordinate{ {DimensionIndex::C, 0} };
+    ISingleChannelScalingTileAccessor::Options options;
+    options.Clear();
+    options.backGroundColor = RgbFloatColor{ 0,0,0 };   // request to have background cleared with black
+    options.subBlockCache = subblock_cache;
+    options.onlyUseSubBlockCacheForCompressedData = false;
+
+    // act
+    auto composite_bitmap = accessor->Get(
+        PixelType::Gray8,
+        IntRect{ 1,1,2,2 },
+        &plane_coordinate,
+        1,
+        &options);
+
+    // assert
+
+    // first, check that the result is correct
+    ASSERT_EQ(composite_bitmap->GetWidth(), 2);
+    ASSERT_EQ(composite_bitmap->GetHeight(), 2);
+    {
+        const ScopedBitmapLockerSP lock_info_bitmap{ composite_bitmap };
+        const uint8_t pixel_x0_y0 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + 0);
+        const uint8_t pixel_x1_y0 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + 1);
+        const uint8_t pixel_x0_y1 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + static_cast<size_t>(1) * lock_info_bitmap.stride + 0);
+        const uint8_t pixel_x1_y1 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + static_cast<size_t>(1) * lock_info_bitmap.stride + 1);
+
+        EXPECT_EQ(pixel_x0_y0, 1);
+        EXPECT_EQ(pixel_x1_y0, 2);
+        EXPECT_EQ(pixel_x0_y1, 3);
+        EXPECT_EQ(pixel_x1_y1, 4);
+    }
+
+    const auto cache_statistics = subblock_cache->GetStatistics(ISubBlockCacheStatistics::kMemoryUsage | ISubBlockCacheStatistics::kElementsCount);
+    EXPECT_GE(cache_statistics.memoryUsage, 16);
+    EXPECT_EQ(cache_statistics.elementsCount, 4);
+
+    // now, we do the same request again, and this time we expect that the subblock-cache is used
+    composite_bitmap = accessor->Get(
+        PixelType::Gray8,
+        IntRect{ 1,1,2,2 },
+        &plane_coordinate,
+        1,
+        &options);
+
+    // we check that the result is the same as before
+    ASSERT_EQ(composite_bitmap->GetWidth(), 2);
+    ASSERT_EQ(composite_bitmap->GetHeight(), 2);
+    {
+        const ScopedBitmapLockerSP lock_info_bitmap{ composite_bitmap };
+        const uint8_t pixel_x0_y0 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + 0);
+        const uint8_t pixel_x1_y0 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + 1);
+        const uint8_t pixel_x0_y1 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + static_cast<size_t>(1) * lock_info_bitmap.stride + 0);
+        const uint8_t pixel_x1_y1 = *(static_cast<const uint8_t*>(lock_info_bitmap.ptrDataRoi) + static_cast<size_t>(1) * lock_info_bitmap.stride + 1);
+
+        EXPECT_EQ(pixel_x0_y0, 1);
+        EXPECT_EQ(pixel_x1_y0, 2);
+        EXPECT_EQ(pixel_x0_y1, 3);
+        EXPECT_EQ(pixel_x1_y1, 4);
+    }
 }

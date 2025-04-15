@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: LGPL-3.0-or-later
 
-IF(UNIX)
+IF(NOT LIBCZI_HAVE_WIN32_API)
  find_package(ZLIB QUIET)
  if (NOT ZLIB_FOUND)
     message(FATAL_ERROR [=[
@@ -24,30 +24,53 @@ IF(UNIX)
     message("** FreeType was not found, CZICmd with the option \"CreateCZI\" will create only empty images.")
 	  message("   (consider installing FreeType with e.g. 'sudo apt-get install libfreetype6-dev')")
  ENDIF()
-ENDIF(UNIX)
-
-find_package(RapidJSON QUIET)
-IF (NOT RapidJSON_FOUND)
-    message(FATAL_ERROR [=[
-    RapidJSON library was not found, which is required for building. Consider installing
-    like 'sudo apt-get install rapidjson-dev'.
-    ]=])
 ENDIF()
 
 include(FetchContent)
+
+if (LIBCZI_BUILD_PREFER_EXTERNALPACKAGE_RAPIDJSON)
+    find_package(RapidJSON QUIET)
+    if (NOT RapidJSON_FOUND)
+        message(FATAL_ERROR [=[
+        RapidJSON library was not found, which is required for building. Consider installing
+        like 'sudo apt-get install rapidjson-dev'. Alternatively, consider setting the option
+        LIBCZI_BUILD_PREFER_EXTERNALPACKAGE_RAPIDJSON to OFF in order to download and build RapidJSON
+        automatically as part of the build process.
+        ]=])
+    endif()
+else()
+    # Since "RapidJSON" is a header-only library, we just have to download it and point to the include directory.
+    # Note: when using v1.1.0 of RapidJSON (the latest release) there we problems (with GCC14.2 with msys2), so
+    #        we use a later version from the master branch.
+    FetchContent_Declare(
+            RapidJSON
+            GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
+            GIT_TAG        815e6e7e7e14be44a6c15d9aefed232ff064cad0 # master as of 2024-09-26
+            PREFIX "${CMAKE_BINARY_DIR}/vendor/rapidjson"
+    )
+
+    set(RAPIDJSON_BUILD_DOC OFF CACHE BOOL "" FORCE)
+    set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(RapidJSON)
+
+    set(RAPIDJSON_INCLUDE_DIRS ${rapidjson_SOURCE_DIR}/include)
+endif()
 
 # make "CLI11" available
 FetchContent_Declare(
   cli11
   GIT_REPOSITORY https://github.com/CLIUtils/CLI11
-  GIT_TAG        v2.2.0
+  GIT_TAG        v2.4.2
 )
+
+set(CLI11_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(CLI11_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(cli11)
 
 set (CZICMDSRCFILES
          BitmapGen.cpp          
          DisplaySettingsHelper.h  
-         targetver.h
          BitmapGenFreeType.cpp  
          cmdlineoptions.cpp  
          execute.cpp              
@@ -63,42 +86,52 @@ set (CZICMDSRCFILES
          consoleio.cpp       
          executeCreateCzi.h       
          inc_CZIcmd_Config.h  
-         stdafx.cpp
          BitmapGenGdiplus.h     
          consoleio.h         
          execute.h                
          inc_libCZI.h         
-         stdafx.h
          BitmapGenNull.cpp      
          inc_rapidjson.h      
          BitmapGenNull.h        
          CZIcmd.cpp          
-         platform_defines.h)
+         executePlaneScan.h
+         executePlaneScan.cpp
+         executeBase.h
+         executeBase.cpp
+         CZIcmd.manifest    # the manifest is needed to allow long paths on windows, see https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=cmd
+                            # CMake will merge the manifest with a linker generated one (and ignore it on non-Windows platforms)
+         CZIcmd.rc          # the rc file (containing version information, only relevant for Windows)
+)
 
 add_executable(CZIcmd ${CZICMDSRCFILES})
 
-set_target_properties(CZIcmd PROPERTIES CXX_STANDARD 11)
+set_target_properties(CZIcmd PROPERTIES CXX_STANDARD 14)
 target_compile_definitions(CZIcmd PRIVATE _LIBCZISTATICLIB)
 
-target_link_libraries(CZIcmd PRIVATE libCZIStatic ${ZLIB_LIBRARIES}  ${PNG_LIBRARIES} CLI11::CLI11)
-target_include_directories(CZIcmd PRIVATE ${CMAKE_CURRENT_BINARY_DIR} "${RAPIDJSON_INCLUDE_DIRS}")
+target_link_libraries(CZIcmd PRIVATE ${ZLIB_LIBRARIES}  ${PNG_LIBRARIES} CLI11::CLI11 libCZIStatic)
+target_include_directories(CZIcmd PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${RAPIDJSON_INCLUDE_DIRS})
+
+IF(LIBCZI_HAVE_WIN32_API)
+  target_link_libraries(CZIcmd PRIVATE gdiplus Windowscodecs ole32)
+ENDIF()
 
 IF (FREETYPE_FOUND)
     target_compile_definitions(CZIcmd PRIVATE _USE_FREETYPE)
     target_include_directories(CZIcmd PRIVATE ${FREETYPE_INCLUDE_DIRS})
-    target_link_libraries(CZIcmd PRIVATE libCZIStatic ${FREETYPE_LIBRARIES})
+    target_link_libraries(CZIcmd PRIVATE ${FREETYPE_LIBRARIES})
 ENDIF()
 
-IF(UNIX)
+IF(NOT LIBCZI_HAVE_WIN32_API)
   target_include_directories(CZIcmd PRIVATE ${ZLIB_INCLUDE_DIR} ${PNG_INCLUDE_DIR})
   # seems to be problem with glibc I'd reckon -> https://stackoverflow.com/questions/51584960/stdcall-once-throws-stdsystem-error-unknown-error-1
   target_link_libraries(CZIcmd  PUBLIC pthread)
-ENDIF(UNIX)
+ENDIF()
 
 set(CZICMD_USE_FREETYPE 0)
 set(CZICMD_USE_WIC 0)
 set(CZICMD_USE_GDIPLUS 0)
 set(CZICMD_USE_LIBPNG 0)
+set(CZICMD_WINDOWSAPIAVAILABLE 0)
 
 IF (FREETYPE_FOUND)
 	set(CZICMD_USE_FREETYPE 1)
@@ -110,7 +143,8 @@ IF(PNG_FOUND)
 	set(CZICMD_LIBPNG_VERSION_STRING "${PNG_VERSION_STRING}")
 ENDIF()
 
-IF(WIN32)
+IF(LIBCZI_HAVE_WIN32_API)
+  set(CZICMD_WINDOWSAPIAVAILABLE 1)
 	set(CZICMD_USE_WIC 1)
 	set(CZICMD_USE_GDIPLUS 1)
 ENDIF()
@@ -118,6 +152,15 @@ ENDIF()
 configure_file (
   "${CMAKE_CURRENT_SOURCE_DIR}/CZIcmd_Config.h.in"
   "${CMAKE_CURRENT_BINARY_DIR}/CZIcmd_Config.h"
+  )
+
+set(czicmd_PROJECT_DESCRIPTION ${CMAKE_PROJECT_DESCRIPTION})  # the string given for the project description in the main CMakeLists.txt
+set(czicmd_VERSION_MAJOR ${libCZI_VERSION_MAJOR})
+set(czicmd_VERSION_MINOR ${libCZI_VERSION_MINOR})
+set(czicmd_VERSION_PATCH ${libCZI_VERSION_PATCH})
+configure_file (
+  "${CMAKE_CURRENT_SOURCE_DIR}/resource_data.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/resource_data.h"
   )
 
 

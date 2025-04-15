@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include "libCZI.h"
 #include "CziSubBlockDirectory.h"
 #include "CziAttachmentsDirectory.h"
@@ -15,13 +16,16 @@ class CCZIReader : public libCZI::ICZIReader, public std::enable_shared_from_thi
 {
 private:
     std::shared_ptr<libCZI::IStream> stream;
+    std::mutex stream_mutex_;               ///< Mutex to protect access to the stream-object.
     CFileHeaderSegmentData hdrSegmentData;
     CCziSubBlockDirectory subBlkDir;
     CCziAttachmentsDirectory attachmentDir;
     bool    isOperational;  ///<    If true, then stream, hdrSegmentData and subBlkDir can be considered valid and operational
+    libCZI::CZIFrameOfReference default_frame_of_reference;
+    libCZI::ICZIReader::OpenOptions::SubBlockDirectoryInfoPolicy sub_block_directory_info_policy_;
 public:
     CCZIReader();
-    ~CCZIReader() override;
+    ~CCZIReader() override = default;
 
     // interface ISubBlockRepository
     void EnumerateSubBlocks(const std::function<bool(int index, const libCZI::SubBlockInfo& info)>& funcEnum) override;
@@ -31,6 +35,7 @@ public:
     bool TryGetSubBlockInfo(int index, libCZI::SubBlockInfo* info) const override;
     libCZI::SubBlockStatistics GetStatistics() override;
     libCZI::PyramidStatistics GetPyramidStatistics() override;
+    libCZI::IntPointAndFrameOfReference TransformPoint(const libCZI::IntPointAndFrameOfReference& source_point, libCZI::CZIFrameOfReference destination_frame_of_reference) override;
 
     // interface ISubBlockRepositoryEx
     void EnumerateSubBlocksEx(const std::function<bool(int index, const libCZI::DirectorySubBlockInfo& info)>& funcEnum) override;

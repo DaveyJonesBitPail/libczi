@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include "SaveBitmap.h"
 #include <fstream>
 #include <stdexcept>
@@ -12,20 +11,36 @@
 //-----------------------------------------------------------------------------
 
 #if CZICMD_USE_WIC == 1
-#include <atlbase.h>
+#include <memory>
 #include <wincodec.h>
+#include <sstream>
+#include <iomanip>
 
-#pragma comment(lib, "Windowscodecs.lib")
+using namespace std;
+
+struct COMDeleter
+{
+    template <typename T>
+    void operator()(T* ptr)
+    {
+        if (ptr)
+        {
+            ptr->Release();
+        }
+    }
+};
 
 class CWicSaveBitmap :public ISaveBitmap
 {
 private:
-    CComPtr<IWICImagingFactory> cpWicImagingFactory;
+    unique_ptr<IWICImagingFactory, COMDeleter> cpWicImagingFactory;
 public:
     CWicSaveBitmap()
     {
-        HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (LPVOID*)&this->cpWicImagingFactory);
+        IWICImagingFactory* pWicImagingFactory;
+        const HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, reinterpret_cast<LPVOID*>(&pWicImagingFactory));
         ThrowIfFailed("Creating WICImageFactory", hr);
+        this->cpWicImagingFactory = unique_ptr<IWICImagingFactory, COMDeleter>(pWicImagingFactory);
     }
 
     virtual void Save(const wchar_t* fileName, SaveDataFormat dataFormat, libCZI::IBitmapData* bitmap)
@@ -59,18 +74,19 @@ public:
 private:
     void SaveWithWIC(const wchar_t* filename, const GUID encoder, const WICPixelFormatGUID& wicPixelFmt, libCZI::IBitmapData* bitmap)
     {
-        CComPtr<IWICStream> stream;
+        IWICStream* stream;
         // Create a stream for the encoder
         HRESULT hr = this->cpWicImagingFactory->CreateStream(&stream);
         ThrowIfFailed("IWICImagingFactory::CreateStream", hr);
+        const unique_ptr<IWICStream, COMDeleter> up_stream(stream);
 
         // Initialize the stream using the output file path
-        hr = stream->InitializeFromFilename(filename, GENERIC_WRITE);
+        hr = up_stream->InitializeFromFilename(filename, GENERIC_WRITE);
         ThrowIfFailed("IWICStream::InitializeFromFilename", hr);
 
-        this->SaveWithWIC(stream, encoder, wicPixelFmt, bitmap);
+        this->SaveWithWIC(up_stream.get(), encoder, wicPixelFmt, bitmap);
 
-        hr = stream->Commit(STGC_DEFAULT);
+        hr = up_stream->Commit(STGC_DEFAULT);
         ThrowIfFailed("IWICStream::Commit", hr, [](HRESULT ec) {return SUCCEEDED(ec) || ec == E_NOTIMPL; });
     }
 
@@ -78,20 +94,22 @@ private:
     {
         // cf. http://msdn.microsoft.com/en-us/library/windows/desktop/ee719797(v=vs.85).aspx
 
-        CComPtr<IWICBitmapEncoder> wicBitmapEncoder;
+        IWICBitmapEncoder* wicBitmapEncoder;
         HRESULT hr = this->cpWicImagingFactory->CreateEncoder(
             encoder,
             nullptr,    // No preferred codec vendor.
             &wicBitmapEncoder);
         ThrowIfFailed("Creating IWICImagingFactory::CreateEncoder", hr);
+        unique_ptr<IWICBitmapEncoder, COMDeleter> up_wicBitmapEncoder(wicBitmapEncoder);
 
         // Create encoder to write to image file
         hr = wicBitmapEncoder->Initialize(destStream, WICBitmapEncoderNoCache);
         ThrowIfFailed("IWICBitmapEncoder::Initialize", hr);
 
-        CComPtr<IWICBitmapFrameEncode> frameEncode;
+        IWICBitmapFrameEncode* frameEncode;
         hr = wicBitmapEncoder->CreateNewFrame(&frameEncode, nullptr);
         ThrowIfFailed("IWICBitmapEncoder::CreateNewFrame", hr);
+        unique_ptr<IWICBitmapFrameEncode, COMDeleter> up_frameEncode(frameEncode);
 
         hr = frameEncode->Initialize(nullptr);
         ThrowIfFailed("IWICBitmapFrameEncode::CreateNewFrame", hr);
@@ -112,8 +130,8 @@ private:
             // TODO
         }
 
-        auto bitmapData = spBitmap->Lock();
-        hr = frameEncode->WritePixels(spBitmap->GetHeight(), bitmapData.stride, spBitmap->GetHeight() * bitmapData.stride, (BYTE*)bitmapData.ptrDataRoi);
+        const auto bitmapData = spBitmap->Lock();
+        hr = frameEncode->WritePixels(spBitmap->GetHeight(), bitmapData.stride, spBitmap->GetHeight() * bitmapData.stride, static_cast<BYTE*>(bitmapData.ptrDataRoi));
         spBitmap->Unlock();
         ThrowIfFailed("IWICBitmapFrameEncode::WritePixels", hr);
 
@@ -133,9 +151,9 @@ private:
     {
         if (!checkFunc(hr))
         {
-            char errorMsg[255];
-            _snprintf_s(errorMsg, _TRUNCATE, "COM-ERROR hr=0x%08X (%s)", hr, function);
-            throw std::runtime_error(errorMsg);
+            ostringstream string_stream;
+            string_stream << "COM-ERROR hr=0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << hr << " (" << function << ")";
+            throw std::runtime_error(string_stream.str());
         }
     }
 };
@@ -195,11 +213,11 @@ private:
             [](std::uint32_t width, void* ptrData)->void
             {
                 char* p = (char*)ptrData;
-        for (std::uint32_t x = 0; x < width; ++x)
-        {
-            std::swap(*p, *(p + 2));
-            p += 3;
-        }
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    std::swap(*p, *(p + 2));
+                    p += 3;
+                }
             });
     }
 
@@ -209,11 +227,11 @@ private:
             [](std::uint32_t width, void* ptrData)->void
             {
                 char* p = (char*)ptrData;
-        for (std::uint32_t x = 0; x < width; ++x)
-        {
-            std::swap(*p, *(p + 2));
-            p += 4;
-        }
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    std::swap(*p, *(p + 2));
+                    p += 4;
+                }
             });
     }
 
@@ -223,11 +241,11 @@ private:
             [](std::uint32_t width, void* ptrData)->void
             {
                 unsigned short* p = (unsigned short*)ptrData;
-        for (std::uint32_t x = 0; x < width; ++x)
-        {
-            std::swap(*p, *(p + 2));
-            p += 3;
-        }
+                for (std::uint32_t x = 0; x < width; ++x)
+                {
+                    std::swap(*p, *(p + 2));
+                    p += 3;
+                }
             });
     }
 
@@ -260,7 +278,8 @@ private:
 
         {
             libCZI::ScopedBitmapLockerP lckScoped{ bitmap };
-            for (std::uint32_t h = 0; h < bitmap->GetHeight(); ++h) {
+            for (std::uint32_t h = 0; h < bitmap->GetHeight(); ++h) 
+            {
                 png_bytep ptr = (png_bytep)(((char*)lckScoped.ptrDataRoi) + h * lckScoped.stride);
                 png_write_row(pngStructInfo.png_ptr, ptr);
             }
@@ -289,7 +308,8 @@ private:
         {
             libCZI::ScopedBitmapLockerP lckScoped{ bitmap };
             std::unique_ptr<void, decltype(&free)> lineToTweak(malloc(lckScoped.stride), &free);
-            for (std::uint32_t h = 0; h < bitmap->GetHeight(); ++h) {
+            for (std::uint32_t h = 0; h < bitmap->GetHeight(); ++h) 
+            {
                 void* ptr = (((char*)lckScoped.ptrDataRoi) + h * lckScoped.stride);
                 memcpy(lineToTweak.get(), ptr, lckScoped.stride);
                 tweakLine(bitmap->GetWidth(), lineToTweak.get());

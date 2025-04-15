@@ -20,6 +20,7 @@ set(LIBCZISRCFILES
             CziMetadataSegment.cpp
             CziParse.cpp
             CZIReader.cpp
+            CziReaderCommon.cpp
             CziReaderWriter.cpp
             CziStructs.cpp
             CziSubBlock.cpp
@@ -43,7 +44,6 @@ set(LIBCZISRCFILES
             SingleChannelTileAccessor.cpp
             SingleChannelTileCompositor.cpp
             splines.cpp
-            stdafx.cpp
             stdAllocator.cpp
             StreamImpl.cpp
             utilities.cpp
@@ -61,6 +61,7 @@ set(LIBCZISRCFILES
             CziMetadataDocumentInfo2.h
             CziMetadataSegment.h
             CziParse.h
+            CziReaderCommon.h
             CZIReader.h
             CziReaderWriter.h
             CziStructs.h
@@ -88,9 +89,9 @@ set(LIBCZISRCFILES
             libCZI_Site.h
             libCZI_Utilities.h
             libCZI_Write.h
+            libCZI_StreamsLib.h
             MD5Sum.h
             MultiChannelCompositor.h
-            priv_guiddef.h
             SingleChannelAccessorBase.h
             SingleChannelPyramidLevelTileAccessor.h
             SingleChannelScalingTileAccessor.h
@@ -98,15 +99,27 @@ set(LIBCZISRCFILES
             SingleChannelTileCompositor.h
             Site.h
             splines.h
-            stdafx.h
             stdAllocator.h
             StreamImpl.h
-            targetver.h
             utilities.h
             XmlNodeWrapper.h
             BitmapOperations.hpp
             pugiconfig.hpp
             pugixml.hpp
+            jxrlibcompress.cpp
+            StreamsLib/streamsFactory.cpp
+            StreamsLib/curlhttpinputstream.cpp
+            StreamsLib/curlhttpinputstream.h
+            StreamsLib/windowsfileinputstream.cpp
+            StreamsLib/windowsfileinputstream.h
+            StreamsLib/simplefileinputstream.cpp
+            StreamsLib/simplefileinputstream.h
+            StreamsLib/preadfileinputstream.cpp
+            StreamsLib/preadfileinputstream.h
+            StreamsLib/azureblobinputstream.h
+            StreamsLib/azureblobinputstream.cpp
+            subblock_cache.h
+            subblock_cache.cpp
 )
 
 # prepare the configuration-file "libCZI_Config.h"
@@ -209,26 +222,45 @@ if (libCZI_HAS_AVXINTRINSICS)
   ENDIF()
 endif()
 
+if (LIBCZI_BUILD_CURL_BASED_STREAM)
+  set(libCZI_libcurl_available 1)
+else()
+  set(libCZI_libcurl_available 0)
+endif()
+
+if (LIBCZI_BUILD_AZURESDK_BASED_STREAM)
+  set(libCZI_AzureStorage_available 1)
+  set(libCZI_AzureStorage_SDK_Version_Info "${LIBCZI_AZURESDK_VERSION_STRING}")
+else()
+  set(libCZI_AzureStorage_available 0)
+  set(libCZI_AzureStorage_SDK_Version_Info "not available")
+endif()
+
+
 if (LIBCZI_BUILD_PREFER_EXTERNALPACKAGE_ZSTD)
   find_package(zstd CONFIG REQUIRED)
 else()
   FetchContent_Declare(
     zstd
     GIT_REPOSITORY https://github.com/facebook/zstd.git
-    GIT_TAG "v1.5.5"
+    GIT_TAG "v1.5.7"
   )
 
-  if(NOT zstd_POPULATED)
-    message(STATUS "Fetching zstd...")
-    set(ZSTD_BUILD_PROGRAMS  OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_SHARED    OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
-    set(ZSTD_BUILD_CONTRIB   OFF CACHE BOOL "" FORCE)
+  message(STATUS "Fetching zstd...")
+  set(ZSTD_BUILD_PROGRAMS  OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_SHARED    OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_TESTS     OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_CONTRIB   OFF CACHE BOOL "" FORCE)
 
-    FetchContent_Populate(zstd)
+  FetchContent_MakeAvailable(zstd)
 
-    add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR})
-  endif()
+  add_subdirectory(${zstd_SOURCE_DIR}/build/cmake ${zstd_BINARY_DIR})
+endif()
+
+if (LIBCZI_HAVE_WIN32_API)
+  set(libCZI_WINDOWSAPIAVAILABLE 1)
+else()
+  set(libCZI_WINDOWSAPIAVAILABLE 0)
 endif()
 
 configure_file (
@@ -240,7 +272,7 @@ configure_file (
 #  Define headers for this library. PUBLIC headers are used for compiling the library, and will be added to consumers' build paths.
 set(libCZIPublicHeaders "ImportExport.h" "libCZI.h" "libCZI_Compositor.h" "libCZI_DimCoordinate.h" "libCZI_exceptions.h"
                "libCZI_Helpers.h" "libCZI_Metadata.h" "libCZI_Metadata2.h" "libCZI_Pixels.h" "libCZI_ReadWrite.h"
-               "libCZI_Site.h" "libCZI_Utilities.h" "libCZI_Write.h" "libCZI_compress.h" "priv_guiddef.h")
+               "libCZI_Site.h" "libCZI_Utilities.h" "libCZI_Write.h" "libCZI_compress.h" "libCZI_StreamsLib.h")
 
 #
 #define the shared libCZI - library
@@ -248,7 +280,7 @@ set(libCZIPublicHeaders "ImportExport.h" "libCZI.h" "libCZI_Compositor.h" "libCZ
 if (LIBCZI_BUILD_DYNLIB)
   add_library(libCZI SHARED ${LIBCZISRCFILES} $<TARGET_OBJECTS:JxrDecodeStatic>)
  
-  set_target_properties(libCZI PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED YES) # https://crascit.com/2015/03/28/enabling-cxx11-in-cmake/
+  set_target_properties(libCZI PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED YES) # https://crascit.com/2015/03/28/enabling-cxx11-in-cmake/
   SET_TARGET_PROPERTIES (libCZI PROPERTIES DEFINE_SYMBOL  "LIBCZI_EXPORTS" )
   set_target_properties(libCZI PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 1)
   # add the binary tree to the search path for include files so that we will find libCZI_Config.h
@@ -262,6 +294,12 @@ if (LIBCZI_BUILD_DYNLIB)
    target_link_libraries(libCZI PRIVATE libzstd_static)
    target_include_directories(libCZI PRIVATE ${zstd_SOURCE_DIR}/lib)
   endif()
+  if (LIBCZI_BUILD_CURL_BASED_STREAM)
+    target_link_libraries(libCZI PRIVATE CURL::libcurl)
+  endif()
+  if (LIBCZI_BUILD_AZURESDK_BASED_STREAM)
+    target_link_libraries(libCZI PRIVATE Azure::azure-identity Azure::azure-storage-blobs)
+  endif()
   if (LIBCZI_BUILD_PREFER_EXTERNALPACKAGE_EIGEN3)
    target_link_libraries(libCZI PRIVATE Eigen3::Eigen)
   else()
@@ -270,6 +308,9 @@ if (LIBCZI_BUILD_DYNLIB)
   IF(UNIX)
     target_compile_options(libCZI PRIVATE -D_FILE_OFFSET_BITS=64)
   ENDIF(UNIX)
+  if(LIBCZI_HAVE_WIN32_API)
+    target_link_libraries(libCZI PRIVATE ole32 Windowscodecs)
+  endif()
 endif(LIBCZI_BUILD_DYNLIB)
 
 #
@@ -277,7 +318,7 @@ endif(LIBCZI_BUILD_DYNLIB)
 #
 # Notes: -we use JxrDecode as an "object-library" in order have it "embedded" into libCZI.a
 add_library(libCZIStatic STATIC ${LIBCZISRCFILES} $<TARGET_OBJECTS:JxrDecodeStatic>)
-set_target_properties(libCZIStatic PROPERTIES CXX_STANDARD 11)
+set_target_properties(libCZIStatic PROPERTIES CXX_STANDARD 14)
 target_compile_definitions(libCZIStatic PRIVATE _LIBCZISTATICLIB)
 set_target_properties(libCZIStatic PROPERTIES VERSION ${PROJECT_VERSION})
 # add the binary tree to the search path for include files so that we will find libCZI_Config.h
@@ -292,6 +333,13 @@ else()
    target_include_directories(libCZIStatic PRIVATE ${zstd_SOURCE_DIR}/lib)
 endif()
 
+if (LIBCZI_BUILD_CURL_BASED_STREAM)
+  target_link_libraries(libCZIStatic PRIVATE CURL::libcurl)
+endif()
+if (LIBCZI_BUILD_AZURESDK_BASED_STREAM)
+  target_link_libraries(libCZIStatic PRIVATE Azure::azure-identity Azure::azure-storage-blobs)
+endif()
+
 if (LIBCZI_BUILD_PREFER_EXTERNALPACKAGE_EIGEN3)
   target_link_libraries(libCZIStatic PRIVATE Eigen3::Eigen)
 else()
@@ -301,6 +349,9 @@ IF(UNIX)
   target_compile_options(libCZIStatic PRIVATE -D_FILE_OFFSET_BITS=64)
   set_property(TARGET libCZIStatic PROPERTY POSITION_INDEPENDENT_CODE ON)
 ENDIF(UNIX)
+if(LIBCZI_HAVE_WIN32_API)
+    target_link_libraries(libCZIStatic PUBLIC ole32 Windowscodecs)
+endif()
 
 #
 # Notes: - the variables CMAKE_INSTALL_<...> have been defined in the module "GNUInstallDirs"

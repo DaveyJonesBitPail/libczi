@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include <limits>
 #include "CziUtils.h"
 
@@ -44,12 +43,10 @@ using namespace libCZI;
 {
     switch (pyramid_type)
     {
-    case SubBlockPyramidType::None: return 0;
-    case SubBlockPyramidType::SingleSubBlock: return 1;
-    case SubBlockPyramidType::MultiSubBlock: return 2;
+    case SubBlockPyramidType::SingleSubBlock:    return 1;
+    case SubBlockPyramidType::MultiSubBlock:     return 2;
+    default:                                     return 0;
     }
-
-    return 0;
 }
 
 /*static*/int CziUtils::IntFromPixelType(libCZI::PixelType p)

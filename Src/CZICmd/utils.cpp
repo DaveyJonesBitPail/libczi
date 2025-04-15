@@ -2,15 +2,13 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
+#include "inc_CZIcmd_Config.h"
 #include "utils.h"
 #include <cwctype>
 #include <iomanip>
 #include <regex>
 
-#if defined(WIN32ENV)
-#define HAS_CODECVT
-#define NOMINMAX
+#if CZICMD_WINDOWSAPI_AVAILABLE
 #include <Windows.h>
 #endif
 
@@ -24,6 +22,34 @@ using namespace std;
 
 std::string convertToUtf8(const std::wstring& str)
 {
+#if CZICMD_WINDOWSAPI_AVAILABLE
+    if (str.empty())
+    {
+        return {};
+    }
+
+    // Determine the size of the resulting UTF-8 string
+    int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1, NULL, 0, NULL, NULL);
+    if (sizeNeeded <= 0)
+    {
+        throw runtime_error("Error in WideCharToMultiByte");
+    }
+
+    // Allocate buffer for the UTF-8 string
+    string result(sizeNeeded, '\0');
+
+    // Perform the conversion from wide string (UTF-16) to UTF-8
+    if (WideCharToMultiByte(CP_UTF8, 0, str.c_str(), -1, &result[0], sizeNeeded, NULL, NULL) <= 0)
+    {
+        throw runtime_error("Error in WideCharToMultiByte");
+    }
+
+    // Remove the null terminator added by WideCharToMultiByte
+    result.resize(sizeNeeded - 1);
+
+    return result;
+#else
+
 #if defined(HAS_CODECVT)
     std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8_conv;
     std::string conv = utf8_conv.to_bytes(str);
@@ -34,10 +60,35 @@ std::string convertToUtf8(const std::wstring& str)
     conv.resize(std::wcstombs(&conv[0], str.c_str(), requiredSize));
     return conv;
 #endif
+
+#endif
 }
 
-std::wstring convertUtf8ToUCS2(const std::string& str)
+std::wstring convertUtf8ToWide(const std::string& str)
 {
+#if CZICMD_WINDOWSAPI_AVAILABLE
+    if (str.empty())
+    {
+        return {};
+    }
+
+    const int buffer_size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, NULL, 0);
+    if (buffer_size <= 0)
+    {
+        throw runtime_error("Error in MultiByteToWideChar");
+    }
+
+    wstring result(buffer_size, L'\0');
+    if (MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &result[0], buffer_size) <= 0)
+    {
+        throw runtime_error("Error in MultiByteToWideChar");
+    }
+
+    // Remove the null terminator added by MultiByteToWideChar
+    result.resize(buffer_size - 1);
+    return result;
+#else
+
 #if defined(HAS_CODECVT)
     std::wstring_convert<std::codecvt_utf8<wchar_t>> utf8conv;
     std::wstring conv = utf8conv.from_bytes(str);
@@ -47,6 +98,8 @@ std::wstring convertUtf8ToUCS2(const std::string& str)
     size_t size = std::mbstowcs(&conv[0], str.c_str(), str.size());
     conv.resize(size);
     return conv;
+#endif
+
 #endif
 }
 
@@ -325,7 +378,7 @@ const wchar_t* skipWhiteSpaceAndOneOfThese(const wchar_t* s, const wchar_t* char
     return s;
 }
 
-std::ostream& operator<<(std::ostream& os, const GUID& guid)
+std::ostream& operator<<(std::ostream& os, const libCZI::GUID& guid)
 {
     os << std::uppercase;
     os.width(8);
@@ -340,15 +393,15 @@ std::ostream& operator<<(std::ostream& os, const GUID& guid)
 
     // editorconfig-checker-disable
     os << std::hex
-       << std::setw(2) << static_cast<short>(guid.Data4[0])
-       << std::setw(2) << static_cast<short>(guid.Data4[1])
-       << '-'
-       << std::setw(2) << static_cast<short>(guid.Data4[2])
-       << std::setw(2) << static_cast<short>(guid.Data4[3])
-       << std::setw(2) << static_cast<short>(guid.Data4[4])
-       << std::setw(2) << static_cast<short>(guid.Data4[5])
-       << std::setw(2) << static_cast<short>(guid.Data4[6])
-       << std::setw(2) << static_cast<short>(guid.Data4[7]);
+        << std::setw(2) << static_cast<short>(guid.Data4[0])
+        << std::setw(2) << static_cast<short>(guid.Data4[1])
+        << '-'
+        << std::setw(2) << static_cast<short>(guid.Data4[2])
+        << std::setw(2) << static_cast<short>(guid.Data4[3])
+        << std::setw(2) << static_cast<short>(guid.Data4[4])
+        << std::setw(2) << static_cast<short>(guid.Data4[5])
+        << std::setw(2) << static_cast<short>(guid.Data4[6])
+        << std::setw(2) << static_cast<short>(guid.Data4[7]);
     // editorconfig-checker-enable
     os << std::nouppercase;
     return os;
@@ -361,7 +414,7 @@ std::ostream& operator<<(std::ostream& os, const GUID& guid)
 /// \param [in,out] outGuid If non-null, the Guid will be put here if successful.
 ///
 /// \return True if it succeeds, false if it fails.
-bool TryParseGuid(const std::wstring& str, GUID* outGuid)
+bool TryParseGuid(const std::wstring& str, libCZI::GUID* outGuid)
 {
     auto strTrimmed = trim(str);
     if (strTrimmed.empty() || strTrimmed.length() < 2)
@@ -377,7 +430,7 @@ bool TryParseGuid(const std::wstring& str, GUID* outGuid)
     std::wregex guidRegex(LR"([0-9A-Fa-f]{8}[-]([0-9A-Fa-f]{4}[-]){3}[0-9A-Fa-f]{12})");
     if (std::regex_match(strTrimmed, guidRegex))
     {
-        GUID g;
+        libCZI::GUID g;
         uint32_t value;
         char sz[9];
         for (int i = 0; i < 8; ++i)
@@ -435,7 +488,7 @@ bool TryParseGuid(const std::wstring& str, GUID* outGuid)
     return false;
 }
 
-#if defined(WIN32ENV)
+#if CZICMD_WINDOWSAPI_AVAILABLE
 CommandlineArgsWindowsHelper::CommandlineArgsWindowsHelper()
 {
     int number_arguments;

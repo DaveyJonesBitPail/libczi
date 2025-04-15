@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include "libCZI.h"
 #include "CZIReader.h"
 #include "CziMetadata.h"
@@ -54,9 +53,14 @@ std::shared_ptr<ICZIReader> libCZI::CreateCZIReader()
     return std::make_shared<CCZIReader>();
 }
 
-std::shared_ptr<ICziWriter> libCZI::CreateCZIWriter()
+std::shared_ptr<ICziWriter> libCZI::CreateCZIWriter(const CZIWriterOptions* options)
 {
-    return std::make_shared<CCziWriter>();
+    if (options == nullptr)
+    {
+        return std::make_shared<CCziWriter>();
+    }
+
+    return std::make_shared<CCziWriter>(*options);
 }
 
 std::shared_ptr<ICziReaderWriter> libCZI::CreateCZIReaderWriter()
@@ -86,15 +90,7 @@ std::shared_ptr<IAccessor> libCZI::CreateAccesor(std::shared_ptr<ISubBlockReposi
 
 std::shared_ptr<libCZI::IStream> libCZI::CreateStreamFromFile(const wchar_t* szFilename)
 {
-#ifdef _WIN32
-    return make_shared<CSimpleStreamImplWindows>(szFilename);
-#else
-#if LIBCZI_USE_PREADPWRITEBASED_STREAMIMPL
-    return make_shared<CStreamImplPread>(szFilename);
-#else
-    return make_shared<CSimpleStreamImpl>(szFilename);
-#endif
-#endif
+    return StreamsFactory::CreateDefaultStreamForFile(szFilename);
 }
 
 std::shared_ptr<libCZI::IStream> libCZI::CreateStreamFromMemory(std::shared_ptr<const void> ptr, size_t dataSize)
@@ -109,7 +105,7 @@ std::shared_ptr<libCZI::IStream> libCZI::CreateStreamFromMemory(libCZI::IAttachm
 
 std::shared_ptr<IOutputStream> libCZI::CreateOutputStreamForFile(const wchar_t* szFilename, bool overwriteExisting)
 {
-#ifdef _WIN32
+#if LIBCZI_WINDOWSAPI_AVAILABLE
     return make_shared<CSimpleOutputStreamImplWindows>(szFilename, overwriteExisting);
 #else
 #if LIBCZI_USE_PREADPWRITEBASED_STREAMIMPL
@@ -122,7 +118,7 @@ std::shared_ptr<IOutputStream> libCZI::CreateOutputStreamForFile(const wchar_t* 
 
 std::shared_ptr<IInputOutputStream> libCZI::CreateInputOutputStreamForFile(const wchar_t* szFilename)
 {
-#ifdef _WIN32
+#if LIBCZI_WINDOWSAPI_AVAILABLE
     return make_shared<CSimpleInputOutputStreamImplWindows>(szFilename);
 #else
 #if LIBCZI_USE_PREADPWRITEBASED_STREAMIMPL

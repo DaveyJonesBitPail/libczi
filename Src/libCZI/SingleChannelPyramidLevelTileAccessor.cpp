@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include <cmath>
 #include "SingleChannelPyramidLevelTileAccessor.h"
 #include "utilities.h"
@@ -11,14 +10,20 @@
 using namespace libCZI;
 using namespace std;
 
-CSingleChannelPyramidLevelTileAccessor::CSingleChannelPyramidLevelTileAccessor(std::shared_ptr<ISubBlockRepository> sbBlkRepository)
+CSingleChannelPyramidLevelTileAccessor::CSingleChannelPyramidLevelTileAccessor(const std::shared_ptr<ISubBlockRepository>& sbBlkRepository)
     : CSingleChannelAccessorBase(sbBlkRepository)
 {
 }
 
-/*virtual*/std::shared_ptr<libCZI::IBitmapData> CSingleChannelPyramidLevelTileAccessor::Get(const libCZI::IntRect& roi, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const ISingleChannelPyramidLayerTileAccessor::Options* pOptions)
+/*virtual*/std::shared_ptr<libCZI::IBitmapData> CSingleChannelPyramidLevelTileAccessor::Get(const libCZI::IntRectAndFrameOfReference& roi, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const ISingleChannelPyramidLayerTileAccessor::Options* pOptions)
 {
-    if (pOptions == nullptr) { Options opt; opt.Clear(); return this->Get(roi, planeCoordinate, pyramidInfo, &opt); }
+    if (pOptions == nullptr)
+    {
+        Options opt;
+        opt.Clear();
+        return this->Get(roi, planeCoordinate, pyramidInfo, &opt);
+    }
+
     libCZI::PixelType pixelType;
     const bool b = this->TryGetPixelType(planeCoordinate, pixelType);
     if (b == false)
@@ -29,11 +34,18 @@ CSingleChannelPyramidLevelTileAccessor::CSingleChannelPyramidLevelTileAccessor(s
     return this->Get(pixelType, roi, planeCoordinate, pyramidInfo, pOptions);
 }
 
-/*virtual*/std::shared_ptr<libCZI::IBitmapData> CSingleChannelPyramidLevelTileAccessor::Get(libCZI::PixelType pixeltype, const libCZI::IntRect& roi, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const libCZI::ISingleChannelPyramidLayerTileAccessor::Options* pOptions)
+/*virtual*/std::shared_ptr<libCZI::IBitmapData> CSingleChannelPyramidLevelTileAccessor::Get(libCZI::PixelType pixeltype, const libCZI::IntRectAndFrameOfReference& roi, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const libCZI::ISingleChannelPyramidLayerTileAccessor::Options* pOptions)
 {
-    if (pOptions == nullptr) { Options opt; opt.Clear(); return this->Get(pixeltype, roi, planeCoordinate, pyramidInfo, &opt); }
+    if (pOptions == nullptr)
+    {
+        Options opt;
+        opt.Clear();
+        return this->Get(pixeltype, roi, planeCoordinate, pyramidInfo, &opt);
+    }
+
+    const IntRect roi_raw_sub_block_cs = this->sbBlkRepository->TransformRectangle(roi, CZIFrameOfReference::RawSubBlockCoordinateSystem).rectangle;
     const int sizeOfPixel = CalcSizeOfPixelOnLayer0(pyramidInfo);
-    const IntSize sizeOfBitmap{ static_cast<std::uint32_t>(roi.w / sizeOfPixel),static_cast<std::uint32_t>(roi.h / sizeOfPixel) };
+    const IntSize sizeOfBitmap{ static_cast<std::uint32_t>(roi_raw_sub_block_cs.w / sizeOfPixel),static_cast<std::uint32_t>(roi_raw_sub_block_cs.h / sizeOfPixel) };
     if (sizeOfBitmap.w == 0 || sizeOfBitmap.h == 0)
     {
         // TODO
@@ -41,15 +53,23 @@ CSingleChannelPyramidLevelTileAccessor::CSingleChannelPyramidLevelTileAccessor(s
     }
 
     auto bmDest = GetSite()->CreateBitmap(pixeltype, sizeOfBitmap.w, sizeOfBitmap.h);
-    this->InternalGet(bmDest.get(), roi.x, roi.y, sizeOfPixel, planeCoordinate, pyramidInfo, *pOptions);
+    this->InternalGet(bmDest.get(), roi_raw_sub_block_cs.x, roi_raw_sub_block_cs.y, sizeOfPixel, planeCoordinate, pyramidInfo, *pOptions);
     return bmDest;
 }
 
-/*virtual*/void CSingleChannelPyramidLevelTileAccessor::Get(libCZI::IBitmapData* pDest, int xPos, int yPos, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const Options* pOptions)
+/*virtual*/void CSingleChannelPyramidLevelTileAccessor::Get(libCZI::IBitmapData* pDest, const libCZI::IntPointAndFrameOfReference& position, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const Options* pOptions)
 {
-    if (pOptions == nullptr) { Options opt; opt.Clear(); this->Get(pDest, xPos, yPos, planeCoordinate, pyramidInfo, &opt); return; }
+    if (pOptions == nullptr)
+    {
+        Options opt;
+        opt.Clear();
+        this->Get(pDest, position, planeCoordinate, pyramidInfo, &opt);
+        return;
+    }
+
+    const IntPoint point_raw_sub_block_cs = this->sbBlkRepository->TransformPoint(position, CZIFrameOfReference::RawSubBlockCoordinateSystem).point;
     const int sizeOfPixel = CalcSizeOfPixelOnLayer0(pyramidInfo);
-    this->InternalGet(pDest, xPos, yPos, sizeOfPixel, planeCoordinate, pyramidInfo, *pOptions);
+    this->InternalGet(pDest, point_raw_sub_block_cs.x, point_raw_sub_block_cs.y, sizeOfPixel, planeCoordinate, pyramidInfo, *pOptions);
 }
 
 void CSingleChannelPyramidLevelTileAccessor::InternalGet(libCZI::IBitmapData* pDest, int xPos, int yPos, int sizeOfPixelOnLayer0, const libCZI::IDimCoordinate* planeCoordinate, const PyramidLayerInfo& pyramidInfo, const Options& options)
@@ -75,7 +95,7 @@ void CSingleChannelPyramidLevelTileAccessor::InternalGet(libCZI::IBitmapData* pD
         });
 }
 
-void CSingleChannelPyramidLevelTileAccessor::ComposeTiles(libCZI::IBitmapData* bm, int xPos, int yPos, int sizeOfPixel, int bitmapCnt, const Options& options, std::function<SbInfo(int)> getSbInfo)
+void CSingleChannelPyramidLevelTileAccessor::ComposeTiles(libCZI::IBitmapData* bm, int xPos, int yPos, int sizeOfPixel, int bitmapCnt, const Options& options, const std::function<SbInfo(int)>& getSbInfo)
 {
     Compositors::ComposeSingleTileOptions composeOptions; composeOptions.Clear();
     composeOptions.drawTileBorder = options.drawTileBorder;
@@ -85,21 +105,24 @@ void CSingleChannelPyramidLevelTileAccessor::ComposeTiles(libCZI::IBitmapData* b
         {
             if (index < bitmapCnt)
             {
-                SbInfo sbinfo = getSbInfo(index);
-                auto sb = this->sbBlkRepository->ReadSubBlock(sbinfo.index);
-                spBm = sb->CreateBitmap();
-                xPosTile = (sb->GetSubBlockInfo().logicalRect.x - xPos) / sizeOfPixel;
-                yPosTile = (sb->GetSubBlockInfo().logicalRect.y - yPos) / sizeOfPixel;
+                const SbInfo sbinfo = getSbInfo(index);
+                const auto subblock_bitmap_data = CSingleChannelAccessorBase::GetSubBlockDataForSubBlockIndex(
+                        this->sbBlkRepository,
+                        options.subBlockCache,
+                        sbinfo.index,
+                        options.onlyUseSubBlockCacheForCompressedData);
+                spBm = subblock_bitmap_data.bitmap;
+                xPosTile = (subblock_bitmap_data.subBlockInfo.logicalRect.x - xPos) / sizeOfPixel;
+                yPosTile = (subblock_bitmap_data.subBlockInfo.logicalRect.y - yPos) / sizeOfPixel;
                 return true;
             }
 
-    return false;
+            return false;
         },
         bm,
-            0,
-            0,
-            &composeOptions);
-
+        0,
+        0,
+        &composeOptions);
 }
 
 libCZI::IntRect CSingleChannelPyramidLevelTileAccessor::CalcDestinationRectFromSourceRect(const libCZI::IntRect& roi, const PyramidLayerInfo& pyramidInfo)
@@ -112,7 +135,7 @@ libCZI::IntRect CSingleChannelPyramidLevelTileAccessor::CalcDestinationRectFromS
 
 libCZI::IntRect CSingleChannelPyramidLevelTileAccessor::NormalizePyramidRect(int x, int y, int w, int h, const PyramidLayerInfo& pyramidInfo)
 {
-    const int p = this->CalcSizeOfPixelOnLayer0(pyramidInfo);
+    const int p = CSingleChannelPyramidLevelTileAccessor::CalcSizeOfPixelOnLayer0(pyramidInfo);
     return IntRect{ x,y,w * p,h * p };
 }
 
@@ -227,16 +250,16 @@ void CSingleChannelPyramidLevelTileAccessor::GetAllSubBlocks(const libCZI::IntRe
                 }
             }
 
-    if (Utilities::DoIntersect(roi, info.logicalRect))
-    {
-        SbInfo sbinfo;
-        sbinfo.logicalRect = info.logicalRect;
-        sbinfo.physicalSize = info.physicalSize;
-        sbinfo.mIndex = info.mIndex;
-        sbinfo.index = idx;
-        appender(sbinfo);
-    }
+            if (Utilities::DoIntersect(roi, info.logicalRect))
+            {
+                SbInfo sbinfo;
+                sbinfo.logicalRect = info.logicalRect;
+                sbinfo.physicalSize = info.physicalSize;
+                sbinfo.mIndex = info.mIndex;
+                sbinfo.index = idx;
+                appender(sbinfo);
+            }
 
-    return true;
+            return true;
         });
 }

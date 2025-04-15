@@ -2,8 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
-
 #include "IBitmapGen.h"
 #include "BitmapGenGdiplus.h"
 #include "BitmapGenNull.h"
@@ -97,10 +95,10 @@ using namespace libCZI;
     {
         { "null", "creating just black images" },
 #if CZICMD_USE_GDIPLUS == 1
-        { "gdi", "based on GDI+, providing text-rendering" },
+        { "gdi", "based on GDI+, provides text-rendering" },
 #endif
 #if CZICMD_USE_FREETYPE == 1
-        { "freetype", "based on the Freetype-library providing text-rendering" },
+        { "freetype", "based on the Freetype-library, provides text-rendering" },
 #endif
     };
 
@@ -128,7 +126,7 @@ using namespace libCZI;
     ss << L"COORD";
     if (info.coord != nullptr)
     {
-        ss << L": " << convertUtf8ToUCS2(Utils::DimCoordinateToString(info.coord));
+        ss << L": " << convertUtf8ToWide(Utils::DimCoordinateToString(info.coord));
     }
     else
     {

@@ -2,7 +2,6 @@
 //
 // SPDX-License-Identifier: LGPL-3.0-or-later
 
-#include "stdafx.h"
 #include <cctype>
 #include "CziDisplaySettings.h"
 #include "splines.h"
@@ -71,7 +70,7 @@ public:
     static void GetSplineDataFromSplineControlPoints(const std::vector<libCZI::IDisplaySettings::SplineControlPoint>& splineControlPoints, std::vector<libCZI::IDisplaySettings::SplineData>& data)
     {
         auto coeffs = CSplines::GetSplineCoefficients(
-            (int)splineControlPoints.size() + 2,
+            static_cast<int>(splineControlPoints.size()) + 2,
             [&](int index, double* px, double* py)->void
             {
                 if (index == 0)
@@ -389,7 +388,7 @@ bool CChannelDisplaySettingsOnPod::TryGetSplineData(std::vector<libCZI::IDisplay
     return std::make_shared<CDisplaySettingsOnPod>(
         [&](int no, int& chIdx, ChannelDisplaySettingsPOD& chDsplSettings) -> bool
         {
-            if (no < (int)displSettings.size())
+            if (no < static_cast<int>(displSettings.size()))
             {
                 chIdx = get<0>(displSettings[no]);
                 chDsplSettings = get<1>(displSettings[no]);
@@ -430,7 +429,7 @@ void CDisplaySettingsOnPod::CDisplaySettingsOnPod::EnumChannels(std::function<bo
 {
     for (std::map<int, shared_ptr< IChannelDisplaySetting>>::const_iterator it = this->channelDs.cbegin(); it != this->channelDs.cend(); ++it)
     {
-        bool b = func(it->first);
+        const bool b = func(it->first);
         if (b == false)
         {
             break;

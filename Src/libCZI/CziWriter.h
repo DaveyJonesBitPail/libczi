@@ -223,6 +223,7 @@ private:
 class CCziWriter : public libCZI::ICziWriter
 {
 private:
+    libCZI::CZIWriterOptions cziWriterOptions;
     CWriterCziSubBlockDirectory sbBlkDirectory;
     CWriterCziAttachmentsDirectory attachmentDirectory;
     std::shared_ptr<libCZI::IOutputStream> stream;
@@ -234,12 +235,12 @@ private:
     {
     private:
         std::shared_ptr<libCZI::ICziWriterInfo> writerInfo;
-        GUID fileGuid;
+        libCZI::GUID fileGuid;
     public:
         explicit CziWriterInfoWrapper(std::shared_ptr<libCZI::ICziWriterInfo> writerInfo);
 
         const libCZI::IDimBounds* GetDimBounds() const override { return this->writerInfo->GetDimBounds(); }
-        const GUID& GetFileGuid() const override { return this->fileGuid; }
+        const libCZI::GUID& GetFileGuid() const override { return this->fileGuid; }
         bool TryGetMIndexMinMax(int* min, int* max) const override { return this->writerInfo->TryGetMIndexMinMax(min, max); }
         bool TryGetReservedSizeForAttachmentDirectory(size_t* size) const override { return this->writerInfo->TryGetReservedSizeForAttachmentDirectory(size); }
         bool TryGetReservedSizeForSubBlockDirectory(size_t* size) const override { return this->writerInfo->TryGetReservedSizeForSubBlockDirectory(size); }
@@ -247,6 +248,7 @@ private:
     };
 public:
     CCziWriter();
+    CCziWriter(const libCZI::CZIWriterOptions& options);
 
     void Create(std::shared_ptr<libCZI::IOutputStream> stream, std::shared_ptr<libCZI::ICziWriterInfo> info) override;
     ~CCziWriter() override;
@@ -255,6 +257,7 @@ public:
     void SyncAddAttachment(const libCZI::AddAttachmentInfo& addAttachmentInfo) override;
     void SyncWriteMetadata(const libCZI::WriteMetadataInfo& metadataInfo) override;
     std::shared_ptr<libCZI::ICziMetadataBuilder> GetPreparedMetadata(const libCZI::PrepareMetadataInfo& info) override;
+    libCZI::SubBlockStatistics GetStatistics() const override;
     void Close() override;
 
 private:
@@ -274,7 +277,7 @@ private:
     void ThrowNotEnoughDataWritten(std::uint64_t offset, std::uint64_t bytesToWrite, std::uint64_t bytesActuallyWritten);
     void ThrowIfCoordinateIsOutOfBounds(const libCZI::AddSubBlockInfo& addSbBlkInfo) const;
 
-    enum class SbBlkCoordinateCheckResult
+    enum class SbBlkCoordinateCheckResult : std::uint8_t
     {
         Ok,
         OutOfBounds,
@@ -288,7 +291,7 @@ private:
 private:
     struct FileHeaderData
     {
-        GUID primaryFileGuid;
+        libCZI::GUID primaryFileGuid;
         std::uint64_t subBlockDirectoryPosition;
         std::uint64_t metadataPosition;
         std::uint64_t attachmentDirectoryPosition;
@@ -300,8 +303,8 @@ private:
 
     void Finish();
 
-    void ThrowIfNotOperational();
-    void ThrowIfAlreadyInitialized();
+    void ThrowIfNotOperational() const;
+    void ThrowIfAlreadyInitialized() const;
 
     void ReserveMetadataSegment(size_t s);
     void ReserveSubBlockDirectory(size_t s);
